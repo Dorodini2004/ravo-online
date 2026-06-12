@@ -171,7 +171,6 @@ export function GamePanel({
   const [settings, setSettings] = useState<DisplaySettings>(() => loadDisplaySettings());
   const [stageScale, setStageScale] = useState(1);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const peerIdsRef = useRef<Set<string>>(new Set());
   const localMediaStreamRef = useRef<MediaStream | null>(null);
   const me = room.players.find((player) => player.id === currentPlayerId);
   const winner = room.players.find((player) => player.id === room.winnerId);
@@ -271,27 +270,39 @@ export function GamePanel({
 
   useEffect(() => {
     const nextStream = new MediaStream();
+    const videoTrack = cameraStream?.getVideoTracks()[0] ?? null;
+    const audioTrack = micStream?.getAudioTracks()[0] ?? null;
 
-    cameraStream?.getVideoTracks().forEach((track) => nextStream.addTrack(track));
-    micStream?.getAudioTracks().forEach((track) => {
-      track.enabled = isMicOn;
-      nextStream.addTrack(track);
-    });
+    if (videoTrack) {
+      nextStream.addTrack(videoTrack);
+    }
+
+    if (audioTrack) {
+      audioTrack.enabled = isMicOn;
+      nextStream.addTrack(audioTrack);
+    }
+
     localMediaStreamRef.current = nextStream;
 
     async function updatePeerConnections() {
       const renegotiations: Promise<void>[] = [];
 
       for (const [peerId, connection] of peerConnectionsRef.current.entries()) {
-      const senders = connection.getSenders();
+        const senders = connection.getSenders();
+        const videoSender = senders.find((sender) => sender.track?.kind === "video");
+        const audioSender = senders.find((sender) => sender.track?.kind === "audio");
 
-      for (const sender of senders) {
-        connection.removeTrack(sender);
-      }
+        if (videoSender) {
+          await videoSender.replaceTrack(videoTrack);
+        } else if (videoTrack) {
+          connection.addTrack(videoTrack, nextStream);
+        }
 
-      nextStream.getTracks().forEach((track) => {
-        connection.addTrack(track, nextStream);
-      });
+        if (audioSender) {
+          await audioSender.replaceTrack(audioTrack);
+        } else if (audioTrack) {
+          connection.addTrack(audioTrack, nextStream);
+        }
 
         if (socket && connection.signalingState === "stable") {
           renegotiations.push(
@@ -341,6 +352,23 @@ export function GamePanel({
         connection.addTrack(track, localMediaStreamRef.current as MediaStream);
       });
 
+      connection.onnegotiationneeded = async () => {
+        if (connection.signalingState !== "stable") {
+          return;
+        }
+
+        try {
+          const offer = await connection.createOffer();
+          await connection.setLocalDescription(offer);
+          socket.emit("webrtc:offer", {
+            offer,
+            to: peerId,
+          });
+        } catch {
+          peerConnectionsRef.current.delete(peerId);
+        }
+      };
+
       connection.onicecandidate = (event) => {
         if (event.candidate) {
           socket.emit("webrtc:ice-candidate", {
@@ -377,8 +405,10 @@ export function GamePanel({
     };
 
     async function createOffer(peerId: string) {
-      peerIdsRef.current.add(peerId);
       const connection = createPeerConnection(peerId);
+      if (connection.signalingState !== "stable") {
+        return;
+      }
       const offer = await connection.createOffer();
       await connection.setLocalDescription(offer);
       socket?.emit("webrtc:offer", { offer, to: peerId });
@@ -387,7 +417,6 @@ export function GamePanel({
     async function handleExistingPeers({ peerIds }: { peerIds: string[] }) {
       for (const peerId of peerIds) {
         if (peerId !== currentPlayerId) {
-          peerIdsRef.current.add(peerId);
           await createOffer(peerId);
         }
       }
@@ -395,15 +424,23 @@ export function GamePanel({
 
     async function handlePeerReady({ peerId }: { peerId: string }) {
       if (peerId !== currentPlayerId) {
-        peerIdsRef.current.add(peerId);
         await createOffer(peerId);
       }
     }
 
     async function handleOffer({ from, offer }: { from: string; offer: RTCSessionDescriptionInit }) {
-      peerIdsRef.current.add(from);
       const connection = createPeerConnection(from);
-      await connection.setRemoteDescription(new RTCSessionDescription(offer));
+      const remoteOffer = new RTCSessionDescription(offer);
+
+      if (connection.signalingState !== "stable") {
+        await Promise.all([
+          connection.setLocalDescription({ type: "rollback" }),
+          connection.setRemoteDescription(remoteOffer),
+        ]);
+      } else {
+        await connection.setRemoteDescription(remoteOffer);
+      }
+
       const answer = await connection.createAnswer();
       await connection.setLocalDescription(answer);
       socket?.emit("webrtc:answer", { answer, to: from });
@@ -412,7 +449,7 @@ export function GamePanel({
     async function handleAnswer({ from, answer }: { from: string; answer: RTCSessionDescriptionInit }) {
       const connection = peerConnectionsRef.current.get(from);
 
-      if (connection && !connection.currentRemoteDescription) {
+      if (connection && connection.signalingState === "have-local-offer") {
         await connection.setRemoteDescription(new RTCSessionDescription(answer));
       }
     }
@@ -428,7 +465,6 @@ export function GamePanel({
     function handlePeerLeft({ peerId }: { peerId: string }) {
       peerConnectionsRef.current.get(peerId)?.close();
       peerConnectionsRef.current.delete(peerId);
-      peerIdsRef.current.delete(peerId);
       setRemoteStreams((current) => {
         const next = { ...current };
         delete next[peerId];
