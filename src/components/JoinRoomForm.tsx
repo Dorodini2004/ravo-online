@@ -46,6 +46,12 @@ export function JoinRoomForm() {
       setError("");
     });
 
+    nextSocket.on("game:returned-to-lobby", (payload: { room: Room }) => {
+      setRoom(payload.room);
+      setHand([]);
+      setError("");
+    });
+
     nextSocket.on("chat:message", (message: ChatMessage) => {
       setChatMessages((current) => [...current.slice(-40), message]);
     });
@@ -170,8 +176,21 @@ export function JoinRoomForm() {
         onCallRavo={handleCallRavo}
         onDrawCard={handleDrawCard}
         onPlayCard={handlePlayCard}
+        onPlayAgain={() => {
+          socketRef.current?.emit("game:play-again", (response: RoomResponse) => {
+            if (!response.ok) {
+              setError(response.error);
+              return;
+            }
+
+            setRoom(response.room);
+            setHand([]);
+            setError("");
+          });
+        }}
         onSendChat={handleSendChat}
         room={room}
+        socket={socketRef.current}
       />
     );
   }

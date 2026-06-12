@@ -9,8 +9,6 @@ type LocalCameraProps = {
   compact?: boolean;
   isCameraOn: boolean;
   isMicOn: boolean;
-  onToggleCamera: () => void;
-  onToggleMic: () => void;
 };
 
 export function LocalCamera({
@@ -20,8 +18,6 @@ export function LocalCamera({
   compact = false,
   isCameraOn,
   isMicOn,
-  onToggleCamera,
-  onToggleMic,
 }: LocalCameraProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -32,7 +28,7 @@ export function LocalCamera({
   }, [cameraStream]);
 
   return (
-    <div className={`local-camera ${className}`}>
+    <div className={`local-camera ${isCameraOn ? "camera-on" : "camera-off"} ${isMicOn ? "mic-on" : "mic-off"} ${className}`}>
       <div className="local-camera-frame">
         {isCameraOn && cameraStream ? (
           <video
@@ -50,12 +46,12 @@ export function LocalCamera({
         )}
 
         <div className="local-camera-actions">
-          <button type="button" onClick={onToggleMic}>
+          <span className={isMicOn ? "status-on" : "status-off"}>
             Mic {isMicOn ? "On" : "Off"}
-          </button>
-          <button type="button" onClick={onToggleCamera}>
-            Cam {isCameraOn ? "Off" : "On"}
-          </button>
+          </span>
+          <span className={isCameraOn ? "status-on" : "status-off"}>
+            Cam {isCameraOn ? "On" : "Off"}
+          </span>
         </div>
       </div>
 

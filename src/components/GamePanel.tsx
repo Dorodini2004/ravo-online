@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import type { Socket } from "socket.io-client";
 import { CardImage } from "@/components/CardImage";
 import { LocalCamera } from "@/components/LocalCamera";
 import type { Card, ChatMessage, Player, Room } from "@/types/room";
@@ -18,8 +19,10 @@ type GamePanelProps = {
   onCallRavo: () => void;
   onDrawCard: () => void;
   onPlayCard: (cardId: string) => void;
+  onPlayAgain: () => void;
   onSendChat: (message: string) => void;
   room: Room;
+  socket: Socket | null;
 };
 
 type OpponentSeat = {
@@ -136,8 +139,10 @@ export function GamePanel({
   onCallRavo,
   onDrawCard,
   onPlayCard,
+  onPlayAgain,
   onSendChat,
   room,
+  socket,
 }: GamePanelProps) {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -161,9 +166,12 @@ export function GamePanel({
   const [countdownTick, setCountdownTick] = useState(() => Date.now());
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
+  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [cameraError, setCameraError] = useState("");
   const [settings, setSettings] = useState<DisplaySettings>(() => loadDisplaySettings());
   const [stageScale, setStageScale] = useState(1);
+  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const localMediaStreamRef = useRef<MediaStream | null>(null);
   const me = room.players.find((player) => player.id === currentPlayerId);
   const winner = room.players.find((player) => player.id === room.winnerId);
   const opponents = room.players.filter((player) => player.id !== currentPlayerId);
@@ -174,7 +182,10 @@ export function GamePanel({
     room.status === "challenge" &&
     room.lastPlayedBy !== currentPlayerId &&
     !didYouCallRavo;
-  const canAct = room.status === "playing" && isYourTurn;
+  const canPlayCard =
+    (room.status === "playing" && isYourTurn) ||
+    (room.status === "bluff-extra" && room.bluffExtraPlayerId === currentPlayerId && isYourTurn);
+  const canDrawCard = room.status === "playing" && isYourTurn;
   const selectedCard = hand.find((card) => card.id === selectedCardId);
   const lastPlayedBy = room.players.find((player) => player.id === room.lastPlayedBy);
   const visibleChatMessages = [...chatMessages, ...localChatMessages].slice(-12);
@@ -247,6 +258,168 @@ export function GamePanel({
   }, [lastRevealedCardId, room.lastRevealedAt]);
 
   useEffect(() => {
+    if (!socket) {
+      return;
+    }
+
+    socket.emit("media:status", {
+      cameraOn: isCameraOn,
+      micOn: isMicOn,
+    });
+  }, [isCameraOn, isMicOn, socket]);
+
+  useEffect(() => {
+    const nextStream = new MediaStream();
+
+    cameraStream?.getVideoTracks().forEach((track) => nextStream.addTrack(track));
+    micStream?.getAudioTracks().forEach((track) => {
+      track.enabled = isMicOn;
+      nextStream.addTrack(track);
+    });
+    localMediaStreamRef.current = nextStream;
+
+    for (const connection of peerConnectionsRef.current.values()) {
+      const senders = connection.getSenders();
+
+      for (const sender of senders) {
+        connection.removeTrack(sender);
+      }
+
+      nextStream.getTracks().forEach((track) => {
+        connection.addTrack(track, nextStream);
+      });
+    }
+  }, [cameraStream, isMicOn, micStream]);
+
+  useEffect(() => {
+    if (!socket || !currentPlayerId || room.status === "waiting") {
+      return;
+    }
+
+    const createPeerConnection = (peerId: string) => {
+      const existing = peerConnectionsRef.current.get(peerId);
+
+      if (existing) {
+        return existing;
+      }
+
+      const connection = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+
+      localMediaStreamRef.current?.getTracks().forEach((track) => {
+        connection.addTrack(track, localMediaStreamRef.current as MediaStream);
+      });
+
+      connection.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit("webrtc:ice-candidate", {
+            candidate: event.candidate,
+            to: peerId,
+          });
+        }
+      };
+
+      connection.ontrack = (event) => {
+        const [stream] = event.streams;
+
+        if (stream) {
+          setRemoteStreams((current) => ({
+            ...current,
+            [peerId]: stream,
+          }));
+        }
+      };
+
+      connection.onconnectionstatechange = () => {
+        if (["closed", "failed", "disconnected"].includes(connection.connectionState)) {
+          peerConnectionsRef.current.delete(peerId);
+          setRemoteStreams((current) => {
+            const next = { ...current };
+            delete next[peerId];
+            return next;
+          });
+        }
+      };
+
+      peerConnectionsRef.current.set(peerId, connection);
+      return connection;
+    };
+
+    async function createOffer(peerId: string) {
+      const connection = createPeerConnection(peerId);
+      const offer = await connection.createOffer();
+      await connection.setLocalDescription(offer);
+      socket?.emit("webrtc:offer", { offer, to: peerId });
+    }
+
+    async function handleExistingPeers({ peerIds }: { peerIds: string[] }) {
+      for (const peerId of peerIds) {
+        if (peerId !== currentPlayerId) {
+          await createOffer(peerId);
+        }
+      }
+    }
+
+    async function handlePeerReady({ peerId }: { peerId: string }) {
+      if (peerId !== currentPlayerId) {
+        await createOffer(peerId);
+      }
+    }
+
+    async function handleOffer({ from, offer }: { from: string; offer: RTCSessionDescriptionInit }) {
+      const connection = createPeerConnection(from);
+      await connection.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await connection.createAnswer();
+      await connection.setLocalDescription(answer);
+      socket?.emit("webrtc:answer", { answer, to: from });
+    }
+
+    async function handleAnswer({ from, answer }: { from: string; answer: RTCSessionDescriptionInit }) {
+      const connection = peerConnectionsRef.current.get(from);
+
+      if (connection && !connection.currentRemoteDescription) {
+        await connection.setRemoteDescription(new RTCSessionDescription(answer));
+      }
+    }
+
+    async function handleIceCandidate({ from, candidate }: { from: string; candidate: RTCIceCandidateInit }) {
+      const connection = peerConnectionsRef.current.get(from) ?? createPeerConnection(from);
+
+      if (candidate) {
+        await connection.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    }
+
+    function handlePeerLeft({ peerId }: { peerId: string }) {
+      peerConnectionsRef.current.get(peerId)?.close();
+      peerConnectionsRef.current.delete(peerId);
+      setRemoteStreams((current) => {
+        const next = { ...current };
+        delete next[peerId];
+        return next;
+      });
+    }
+
+    socket.on("webrtc:existing-peers", handleExistingPeers);
+    socket.on("webrtc:peer-ready", handlePeerReady);
+    socket.on("webrtc:offer", handleOffer);
+    socket.on("webrtc:answer", handleAnswer);
+    socket.on("webrtc:ice-candidate", handleIceCandidate);
+    socket.on("webrtc:peer-left", handlePeerLeft);
+    socket.emit("webrtc:ready");
+
+    return () => {
+      socket.off("webrtc:existing-peers", handleExistingPeers);
+      socket.off("webrtc:peer-ready", handlePeerReady);
+      socket.off("webrtc:offer", handleOffer);
+      socket.off("webrtc:answer", handleAnswer);
+      socket.off("webrtc:ice-candidate", handleIceCandidate);
+      socket.off("webrtc:peer-left", handlePeerLeft);
+    };
+  }, [currentPlayerId, room.code, room.status, socket]);
+
+  useEffect(() => {
     if (room.status !== "challenge") {
       const timeout = window.setTimeout(() => setIsRavoLoading(false), 0);
 
@@ -294,7 +467,7 @@ export function GamePanel({
   }, []);
 
   function handleCardClick(cardId: string) {
-    if (!canAct || isPlayLoading) {
+    if (!canPlayCard || isPlayLoading) {
       return;
     }
 
@@ -312,7 +485,7 @@ export function GamePanel({
   }
 
   function handlePlaySelected() {
-    if (!selectedCardId || !canAct) {
+    if (!selectedCardId || !canPlayCard) {
       return;
     }
 
@@ -321,7 +494,7 @@ export function GamePanel({
   }
 
   function handleDrawCardClick() {
-    if (!canAct || isDrawLoading) {
+    if (!canDrawCard || isDrawLoading) {
       return;
     }
 
@@ -446,7 +619,7 @@ export function GamePanel({
           <aside className="ravo-left-sidebar">
             <div>
               <h1 className="ravo-logo">
-                RAVO<span>MASK</span>
+                RAVO<span>made by Dorodini</span>
               </h1>
 
               <div className="ravo-side-card">
@@ -482,15 +655,14 @@ export function GamePanel({
               <div className="ravo-table-mask">RAVO</div>
 
               <div className="ravo-number-panel">
-                <p>Current Number</p>
+                <p>Next Number</p>
                 <strong>{room.expectedNumber}</strong>
-                <span>Next: {getNextNumber(room.expectedNumber)}</span>
               </div>
 
               <div className="ravo-center-piles">
                 <button
                   type="button"
-                  disabled={!canAct || isDrawLoading}
+                  disabled={!canDrawCard || isDrawLoading}
                   onClick={handleDrawCardClick}
                   className="ravo-pile ravo-draw-pile"
                   aria-label="Draw card"
@@ -548,6 +720,7 @@ export function GamePanel({
               key={seat.key}
               seat={seat}
               isTurn={seat.player.id === room.currentTurnPlayerId}
+              remoteStream={remoteStreams[seat.player.id] ?? null}
             />
           ))}
 
@@ -570,12 +743,10 @@ export function GamePanel({
               compact
               isCameraOn={isCameraOn}
               isMicOn={isMicOn}
-              onToggleCamera={handleToggleCamera}
-              onToggleMic={handleToggleMic}
             />
             <div className="ravo-camera-controls">
-              <span>Mic: {isMicOn ? "On" : "Off"}</span>
-              <span>Camera: {isCameraOn ? "On" : "Off"}</span>
+              <span className={isMicOn ? "status-on" : "status-off"}>Mic: {isMicOn ? "On" : "Off"}</span>
+              <span className={isCameraOn ? "status-on" : "status-off"}>Camera: {isCameraOn ? "On" : "Off"}</span>
             </div>
           </aside>
 
@@ -588,7 +759,7 @@ export function GamePanel({
                     <button
                       type="button"
                       key={card.id}
-                      disabled={!canAct || isPlayLoading}
+                      disabled={!canPlayCard || isPlayLoading}
                     onClick={() => handleCardClick(card.id)}
                     style={getHandCardStyle(index, hand.length, isSelected)}
                     className={`ravo-hand-card ${isSelected ? "selected" : ""}`}
@@ -606,8 +777,13 @@ export function GamePanel({
               <small>
                 {me?.name ?? "Player"} - {hand.length} cards
               </small>
+              {room.status === "bluff-extra" && room.bluffExtraPlayerId === currentPlayerId ? (
+                <em className="ravo-bluff-extra-note">
+                  BLUFF SUCCESS - play {room.bluffExtraRemaining} extra cards
+                </em>
+              ) : null}
               {selectedCard ? (
-                <button type="button" disabled={!canAct} onClick={handlePlaySelected}>
+                <button type="button" disabled={!canPlayCard} onClick={handlePlaySelected}>
                   Play {getCardLabel(selectedCard)}
                 </button>
               ) : null}
@@ -639,18 +815,18 @@ export function GamePanel({
               </button>
               <button
                 type="button"
-                disabled={!canAct || isDrawLoading}
+                disabled={!canDrawCard || isDrawLoading}
                 onClick={handleDrawCardClick}
                 className="ravo-action"
               >
                 <span>Draw Card</span>
                 <small>{isDrawLoading ? "Drawing..." : "Skip your turn"}</small>
               </button>
-              <button type="button" className="ravo-action" onClick={handleToggleCamera}>
+              <button type="button" className={`ravo-action status-action ${isCameraOn ? "status-on" : "status-off"}`} onClick={handleToggleCamera}>
                 <span>Camera: {isCameraOn ? "On" : "Off"}</span>
                 <small>{isCameraOn ? "Click to stop" : "Request camera"}</small>
               </button>
-              <button type="button" className="ravo-action" onClick={handleToggleMic}>
+              <button type="button" className={`ravo-action status-action ${isMicOn ? "status-on" : "status-off"}`} onClick={handleToggleMic}>
                 <span>Mic: {isMicOn ? "On" : "Off"}</span>
                 <small>{isMicOn ? "Click to stop" : "Request mic"}</small>
               </button>
@@ -733,6 +909,9 @@ export function GamePanel({
               <div>
                 <p>Game Over</p>
                 <h2>{winner?.name ?? "A player"} wins</h2>
+                <button type="button" onClick={onPlayAgain}>
+                  Play Again
+                </button>
               </div>
             </div>
           ) : null}
@@ -815,14 +994,31 @@ function DisplaySettingsPanel({
   );
 }
 
-function OpponentSeat({ seat, isTurn }: { seat: OpponentSeat; isTurn: boolean }) {
+function OpponentSeat({
+  isTurn,
+  remoteStream,
+  seat,
+}: {
+  isTurn: boolean;
+  remoteStream: MediaStream | null;
+  seat: OpponentSeat;
+}) {
   const player = seat.player;
+  const cameraClass = player.cameraOn ? "camera-on" : "camera-off";
+  const micClass = player.micOn ? "mic-on" : "mic-off";
 
   return (
-    <div className={`ravo-opponent-zone ${seat.className} ${isTurn ? "active" : ""}`}>
+    <div className={`ravo-opponent-zone ${seat.className} ${isTurn ? "active" : ""} ${cameraClass} ${micClass}`}>
       <div className="ravo-opponent-camera">
         <span>{player.name}</span>
-        <div>CAMERA OFF</div>
+        {remoteStream && player.cameraOn ? (
+          <RemoteVideo stream={remoteStream} />
+        ) : (
+          <>
+            <div>CAMERA OFF</div>
+            {remoteStream && player.micOn ? <RemoteAudio stream={remoteStream} /> : null}
+          </>
+        )}
       </div>
       <div className="ravo-opponent-cards">
         {Array.from({ length: Math.max(1, Math.min(7, player.cardCount ?? 0)) }).map((_, index) => (
@@ -831,9 +1027,41 @@ function OpponentSeat({ seat, isTurn }: { seat: OpponentSeat; isTurn: boolean })
       </div>
       <div className="ravo-opponent-meta">
         <strong>{player.cardCount ?? 0} CARDS</strong>
+        <span className={player.micOn ? "status-dot on" : "status-dot off"} />
       </div>
     </div>
   );
+}
+
+function RemoteVideo({ stream }: { stream: MediaStream }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      className="ravo-remote-video"
+    />
+  );
+}
+
+function RemoteAudio({ stream }: { stream: MediaStream }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  return <audio ref={audioRef} autoPlay />;
 }
 
 function PileStack() {

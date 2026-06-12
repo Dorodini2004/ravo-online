@@ -1,6 +1,8 @@
 export type Player = {
   cardCount?: number;
+  cameraOn?: boolean;
   id: string;
+  micOn?: boolean;
   name: string;
 };
 
@@ -29,6 +31,8 @@ export type Room = {
   discardPileCount: number;
   drawPileCount: number;
   expectedNumber: number;
+  bluffExtraPlayerId: string | null;
+  bluffExtraRemaining: number;
   hostId: string;
   lastAnnouncement: string | null;
   lastPlayedBy: string | null;
@@ -44,7 +48,7 @@ export type Room = {
   pendingRavoCallers: string[];
   players: Player[];
   roundNumber: number;
-  status: "waiting" | "playing" | "challenge" | "finished";
+  status: "waiting" | "playing" | "challenge" | "bluff-extra" | "finished";
   winnerId: string | null;
 };
 

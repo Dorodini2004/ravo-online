@@ -84,9 +84,13 @@ function getPublicRoom(room) {
   const players = Array.from(room.players.values()).map((player) => ({
     ...player,
     cardCount: room.hands.get(player.id)?.length ?? 0,
+    cameraOn: room.mediaStatus.get(player.id)?.cameraOn ?? false,
+    micOn: room.mediaStatus.get(player.id)?.micOn ?? false,
   }));
 
   return {
+    bluffExtraPlayerId: room.bluffExtraPlayerId,
+    bluffExtraRemaining: room.bluffExtraRemaining,
     challengeEndsAt: room.challengeEndsAt,
     code: room.code,
     currentTurnPlayerId: room.currentTurnPlayerId,
@@ -163,6 +167,36 @@ function checkWinner(room, playerId) {
   return false;
 }
 
+function resetGameRound(room) {
+  room.status = "playing";
+  room.currentTurnPlayerId = Array.from(room.players.keys())[0];
+  room.expectedNumber = 1;
+  room.hands.clear();
+  room.lastAnnouncement = null;
+  room.lastClaimedNumber = null;
+  room.lastPlayedCard = null;
+  room.lastPlayedBy = null;
+  room.lastRevealedAt = null;
+  room.lastRevealedCard = null;
+  room.lastRevealedCardLabel = null;
+  room.lastRevealCallers = [];
+  room.lastRevealWasChallenged = false;
+  room.pendingPlay = null;
+  room.pendingRavoCallers.clear();
+  room.bluffExtraPlayerId = null;
+  room.bluffExtraRemaining = 0;
+  room.roundNumber = 1;
+  room.challengeEndsAt = null;
+  room.winnerId = null;
+  room.discardPile = [];
+  room.drawPile = shuffleDeck(createPlayableDeck());
+  clearChallengeTimer(room);
+
+  for (const player of room.players.values()) {
+    room.hands.set(player.id, room.drawPile.splice(0, 8));
+  }
+}
+
 function clearChallengeTimer(room) {
   if (room.challengeTimer) {
     clearTimeout(room.challengeTimer);
@@ -193,6 +227,7 @@ function finishPendingPlay(io, room) {
   const isBluffCard = pendingPlay.card.type === "bluff";
   let nextTurnPlayerId = getNextPlayerId(room, pendingPlay.playerId);
   let advanceSequence = true;
+  let startsBluffExtra = false;
 
   console.log("revealing card:", pendingPlay.card);
 
@@ -213,6 +248,16 @@ function finishPendingPlay(io, room) {
 
   if (callers.length === 0) {
     addLog(room, `${playedByName}'s card was not challenged.`);
+  } else if (isBluffCard) {
+    nextTurnPlayerId = pendingPlay.playerId;
+    advanceSequence = false;
+    startsBluffExtra = true;
+    addLog(room, `BLUFF SUCCESS - ${playedByName} may play 2 extra cards.`);
+    io.to(room.code).emit("game:bluff-success", {
+      playerId: pendingPlay.playerId,
+      playerName: playedByName,
+      extraCards: 2,
+    });
   } else if (callers.length >= 2) {
     for (const callerId of callers) {
       const drawnCount = drawCards(room, callerId, 3);
@@ -225,15 +270,7 @@ function finishPendingPlay(io, room) {
     const callerId = callers[0];
     const callerName = room.players.get(callerId)?.name ?? "A caller";
 
-    if (isBluffCard) {
-      const drawnCount = drawCards(room, callerId, 3);
-      nextTurnPlayerId = pendingPlay.playerId;
-      advanceSequence = false;
-      addLog(
-        room,
-        `${callerName} incorrectly called RAVO on a BLUFF card and drew ${drawnCount} cards. ${playedByName} gets another turn.`,
-      );
-    } else if (isTruthful) {
+    if (isTruthful) {
       const drawnCount = drawCards(room, callerId, 2);
       addLog(
         room,
@@ -251,16 +288,24 @@ function finishPendingPlay(io, room) {
   const didPlayedPlayerWin = checkWinner(room, pendingPlay.playerId);
 
   if (!didPlayedPlayerWin) {
-    room.status = "playing";
-    room.currentTurnPlayerId = nextTurnPlayerId;
-    addLog(room, `${room.players.get(nextTurnPlayerId)?.name ?? "Next player"}'s turn started.`);
+    if (startsBluffExtra) {
+      room.status = "bluff-extra";
+      room.currentTurnPlayerId = pendingPlay.playerId;
+      room.bluffExtraPlayerId = pendingPlay.playerId;
+      room.bluffExtraRemaining = 2;
+      addLog(room, "BLUFF SUCCESS - play 2 extra cards.");
+    } else {
+      room.status = "playing";
+      room.currentTurnPlayerId = nextTurnPlayerId;
+      addLog(room, `${room.players.get(nextTurnPlayerId)?.name ?? "Next player"}'s turn started.`);
 
-    if (nextTurnPlayerId === Array.from(room.players.keys())[0]) {
-      room.roundNumber += 1;
-    }
+      if (nextTurnPlayerId === Array.from(room.players.keys())[0]) {
+        room.roundNumber += 1;
+      }
 
-    if (advanceSequence) {
-      room.expectedNumber = getNextExpectedNumber(room.expectedNumber);
+      if (advanceSequence) {
+        room.expectedNumber = getNextExpectedNumber(room.expectedNumber);
+      }
     }
   }
 
@@ -275,6 +320,8 @@ function createRoom(socket, roomCode) {
   return {
     challengeEndsAt: null,
     challengeTimer: null,
+    bluffExtraPlayerId: null,
+    bluffExtraRemaining: 0,
     code: roomCode,
     currentTurnPlayerId: null,
     expectedNumber: 1,
@@ -292,6 +339,7 @@ function createRoom(socket, roomCode) {
     pendingPlay: null,
     pendingRavoCallers: new Set(),
     players: new Map(),
+    mediaStatus: new Map(),
     roundNumber: 1,
     hands: new Map(),
     status: "waiting",
@@ -326,6 +374,7 @@ app.prepare().then(() => {
       const player = { id: socket.id, name: trimmedName };
 
       room.players.set(socket.id, player);
+      room.mediaStatus.set(socket.id, { cameraOn: false, micOn: false });
       rooms.set(roomCode, room);
       socket.join(roomCode);
       socket.data.roomCode = roomCode;
@@ -371,6 +420,7 @@ app.prepare().then(() => {
       const player = { id: socket.id, name: trimmedName };
 
       room.players.set(socket.id, player);
+      room.mediaStatus.set(socket.id, { cameraOn: false, micOn: false });
       socket.join(normalizedRoomCode);
       socket.data.roomCode = normalizedRoomCode;
       socket.data.playerName = trimmedName;
@@ -398,31 +448,7 @@ app.prepare().then(() => {
         return;
       }
 
-      room.status = "playing";
-      room.currentTurnPlayerId = Array.from(room.players.keys())[0];
-      room.expectedNumber = 1;
-      room.hands.clear();
-      room.lastAnnouncement = null;
-      room.lastClaimedNumber = null;
-      room.lastPlayedCard = null;
-      room.lastPlayedBy = null;
-      room.lastRevealedAt = null;
-      room.lastRevealedCard = null;
-      room.lastRevealedCardLabel = null;
-      room.lastRevealCallers = [];
-      room.lastRevealWasChallenged = false;
-      room.pendingPlay = null;
-      room.pendingRavoCallers.clear();
-      room.roundNumber = 1;
-      room.challengeEndsAt = null;
-      room.winnerId = null;
-      room.discardPile = [];
-      room.drawPile = shuffleDeck(createPlayableDeck());
-      clearChallengeTimer(room);
-
-      for (const player of room.players.values()) {
-        room.hands.set(player.id, room.drawPile.splice(0, 8));
-      }
+      resetGameRound(room);
 
       addLog(room, "The game started. Each player received 8 cards.");
       callback({ ok: true, room: getPublicRoom(room) });
@@ -437,7 +463,7 @@ app.prepare().then(() => {
         return;
       }
 
-      if (room.status !== "playing") {
+      if (room.status !== "playing" && room.status !== "bluff-extra") {
         callback({ ok: false, error: "You cannot play a card right now." });
         return;
       }
@@ -458,6 +484,49 @@ app.prepare().then(() => {
       const [playedCard] = hand.splice(cardIndex, 1);
       console.log("played card:", playedCard);
       room.hands.set(socket.id, hand);
+
+      if (room.status === "bluff-extra") {
+        if (room.bluffExtraPlayerId !== socket.id || room.bluffExtraRemaining <= 0) {
+          callback({ ok: false, error: "You cannot play extra BLUFF cards right now." });
+          hand.splice(cardIndex, 0, playedCard);
+          room.hands.set(socket.id, hand);
+          return;
+        }
+
+        room.discardPile.push({
+          announcedNumber: null,
+          card: playedCard,
+          playerId: socket.id,
+        });
+        room.bluffExtraRemaining -= 1;
+        room.lastAnnouncement = "BLUFF SUCCESS - extra card played face-down.";
+        addLog(room, `${socket.data.playerName} played an extra BLUFF success card.`);
+        io.to(room.code).emit("game:bluff-extra-card-played", {
+          playerId: socket.id,
+          remaining: room.bluffExtraRemaining,
+        });
+
+        const didWin = checkWinner(room, socket.id);
+
+        if (!didWin && room.bluffExtraRemaining <= 0) {
+          const nextTurnPlayerId = getNextPlayerId(room, socket.id);
+          room.status = "playing";
+          room.bluffExtraPlayerId = null;
+          room.bluffExtraRemaining = 0;
+          room.currentTurnPlayerId = nextTurnPlayerId;
+          room.expectedNumber = getNextExpectedNumber(room.expectedNumber);
+          addLog(room, `${room.players.get(nextTurnPlayerId)?.name ?? "Next player"}'s turn started.`);
+
+          if (nextTurnPlayerId === Array.from(room.players.keys())[0]) {
+            room.roundNumber += 1;
+          }
+        }
+
+        callback({ ok: true, room: getPublicRoom(room) });
+        emitPrivateGameState(io, room);
+        return;
+      }
+
       room.discardPile.push({
         announcedNumber: room.expectedNumber,
         card: playedCard,
@@ -599,13 +668,107 @@ app.prepare().then(() => {
       callback?.({ ok: true });
     });
 
+    socket.on("game:play-again", (callback) => {
+      const room = rooms.get(socket.data.roomCode);
+
+      if (!room) {
+        callback?.({ ok: false, error: "Room not found. Create or join a room first." });
+        return;
+      }
+
+      room.status = "waiting";
+      room.currentTurnPlayerId = null;
+      room.expectedNumber = 1;
+      room.hands.clear();
+      room.lastAnnouncement = null;
+      room.lastClaimedNumber = null;
+      room.lastPlayedCard = null;
+      room.lastPlayedBy = null;
+      room.lastRevealedAt = null;
+      room.lastRevealedCard = null;
+      room.lastRevealedCardLabel = null;
+      room.lastRevealCallers = [];
+      room.lastRevealWasChallenged = false;
+      room.pendingPlay = null;
+      room.pendingRavoCallers.clear();
+      room.bluffExtraPlayerId = null;
+      room.bluffExtraRemaining = 0;
+      room.roundNumber = 1;
+      room.challengeEndsAt = null;
+      room.winnerId = null;
+      room.discardPile = [];
+      room.drawPile = [];
+      clearChallengeTimer(room);
+      addLog(room, "Players returned to the lobby.");
+      callback?.({ ok: true, room: getPublicRoom(room) });
+      emitPrivateGameState(io, room);
+      io.to(room.code).emit("game:returned-to-lobby", {
+        room: getPublicRoom(room),
+      });
+      io.to(room.code).emit("room:updated", getPublicRoom(room));
+    });
+
+    socket.on("media:status", ({ cameraOn, micOn }) => {
+      const room = rooms.get(socket.data.roomCode);
+
+      if (!room) {
+        return;
+      }
+
+      room.mediaStatus.set(socket.id, {
+        cameraOn: Boolean(cameraOn),
+        micOn: Boolean(micOn),
+      });
+      emitPrivateGameState(io, room);
+    });
+
+    socket.on("webrtc:ready", () => {
+      const room = rooms.get(socket.data.roomCode);
+
+      if (!room) {
+        return;
+      }
+
+      socket.to(room.code).emit("webrtc:peer-ready", {
+        peerId: socket.id,
+      });
+      socket.emit("webrtc:existing-peers", {
+        peerIds: Array.from(room.players.keys()).filter((playerId) => playerId !== socket.id),
+      });
+    });
+
+    socket.on("webrtc:offer", ({ to, offer }) => {
+      io.to(to).emit("webrtc:offer", {
+        from: socket.id,
+        offer,
+      });
+    });
+
+    socket.on("webrtc:answer", ({ to, answer }) => {
+      io.to(to).emit("webrtc:answer", {
+        from: socket.id,
+        answer,
+      });
+    });
+
+    socket.on("webrtc:ice-candidate", ({ to, candidate }) => {
+      io.to(to).emit("webrtc:ice-candidate", {
+        candidate,
+        from: socket.id,
+      });
+    });
+
     socket.on("disconnect", () => {
       const room = rooms.get(socket.data.roomCode);
 
       if (room) {
         room.players.delete(socket.id);
         room.hands.delete(socket.id);
+        room.mediaStatus.delete(socket.id);
         room.pendingRavoCallers.delete(socket.id);
+        socket.to(room.code).emit("webrtc:peer-left", {
+          peerId: socket.id,
+        });
 
         if (room.players.size === 0) {
           clearChallengeTimer(room);
