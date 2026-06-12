@@ -668,6 +668,32 @@ app.prepare().then(() => {
       callback?.({ ok: true });
     });
 
+    socket.on("lobbyChatMessage", ({ text }, callback) => {
+      const room = rooms.get(socket.data.roomCode);
+      const trimmedText = typeof text === "string" ? text.trim() : "";
+
+      if (!room) {
+        callback?.({ ok: false, error: "Room not found. Create or join a room first." });
+        return;
+      }
+
+      if (!trimmedText) {
+        callback?.({ ok: false, error: "Enter a message before sending." });
+        return;
+      }
+
+      const chatMessage = {
+        id: `${Date.now()}-${socket.id}`,
+        message: trimmedText.slice(0, 180),
+        playerId: socket.id,
+        playerName: socket.data.playerName ?? "Player",
+        sentAt: Date.now(),
+      };
+
+      io.to(room.code).emit("lobbyChatMessage", chatMessage);
+      callback?.({ ok: true });
+    });
+
     socket.on("game:play-again", (callback) => {
       const room = rooms.get(socket.data.roomCode);
 

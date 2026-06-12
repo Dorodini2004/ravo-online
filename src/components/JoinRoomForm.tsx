@@ -58,9 +58,14 @@ export function JoinRoomForm() {
       setChatMessages((current) => [...current.slice(-40), message]);
     });
 
+    nextSocket.on("lobbyChatMessage", (message: ChatMessage) => {
+      setChatMessages((current) => [...current.slice(-40), message]);
+    });
+
     socketRef.current = nextSocket;
 
     return () => {
+      nextSocket.off("lobbyChatMessage");
       nextSocket.disconnect();
       socketRef.current = null;
       setCurrentPlayerId("");
@@ -168,6 +173,19 @@ export function JoinRoomForm() {
     });
   }
 
+  function handleSendLobbyChat(message: string) {
+    if (!socketRef.current) {
+      setError("Still connecting to the server. Try again in a moment.");
+      return;
+    }
+
+    socketRef.current.emit("lobbyChatMessage", { text: message }, (response: { ok: boolean; error?: string }) => {
+      if (!response.ok && response.error) {
+        setError(response.error);
+      }
+    });
+  }
+
   if (room && room.status !== "waiting") {
     return (
       <GamePanel
@@ -205,11 +223,13 @@ export function JoinRoomForm() {
     return (
       <RoomPanel
         cameraStream={cameraStream}
+        chatMessages={chatMessages}
         currentPlayerId={currentPlayerId}
         error={error}
         micStream={micStream}
         onCameraStreamChange={setCameraStream}
         onMicStreamChange={setMicStream}
+        onSendChat={handleSendLobbyChat}
         onStartGame={handleStartGame}
         room={room}
         socket={socketRef.current}
