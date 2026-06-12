@@ -20,7 +20,7 @@ export default function Home() {
           <CardImage faceDown className="h-full w-full" />
         </div>
         <div className="reference-corner-card corner-bottom-right">
-          <CardImage card={{ id: "corner-10", type: "number", value: 10 }} className="h-full w-full" />
+          <CardImage card={{ id: "corner-9", type: "number", value: 9 }} className="h-full w-full" />
         </div>
       </div>
 

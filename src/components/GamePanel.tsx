@@ -80,7 +80,7 @@ function getCardLabel(card: Card) {
 }
 
 function getNextNumber(currentNumber: number) {
-  return currentNumber === 10 ? 1 : currentNumber + 1;
+  return currentNumber === 9 ? 1 : currentNumber + 1;
 }
 
 function getNextScale(currentScale: number, direction: -1 | 1) {

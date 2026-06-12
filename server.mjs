@@ -14,7 +14,7 @@ const rooms = new Map();
 function createPlayableDeck() {
   const deck = [];
 
-  for (let value = 1; value <= 10; value += 1) {
+  for (let value = 1; value <= 9; value += 1) {
     for (let copy = 1; copy <= 9; copy += 1) {
       deck.push({ id: `number-${value}-${copy}`, type: "number", value });
     }
@@ -118,7 +118,7 @@ function getPublicRoom(room) {
 }
 
 function getNextExpectedNumber(currentNumber) {
-  return currentNumber === 10 ? 1 : currentNumber + 1;
+  return currentNumber === 9 ? 1 : currentNumber + 1;
 }
 
 function getNextPlayerId(room, fromPlayerId = room.currentTurnPlayerId) {
