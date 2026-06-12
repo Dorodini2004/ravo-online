@@ -3,8 +3,5 @@ services:
     name: ravo-online
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
-    envVars:
-      - key: NODE_ENV
-        value: production
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: NODE_ENV=production npm run start
