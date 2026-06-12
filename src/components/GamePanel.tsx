@@ -16,8 +16,12 @@ type GamePanelProps = {
   currentPlayerId: string;
   error?: string;
   hand: Card[];
+  initialCameraStream?: MediaStream | null;
+  initialMicStream?: MediaStream | null;
+  onCameraStreamChange?: (stream: MediaStream | null) => void;
   onCallRavo: () => void;
   onDrawCard: () => void;
+  onMicStreamChange?: (stream: MediaStream | null) => void;
   onPlayCard: (cardId: string) => void;
   onPlayAgain: () => void;
   onSendChat: (message: string) => void;
@@ -136,8 +140,12 @@ export function GamePanel({
   currentPlayerId,
   error,
   hand,
+  initialCameraStream,
+  initialMicStream,
+  onCameraStreamChange,
   onCallRavo,
   onDrawCard,
+  onMicStreamChange,
   onPlayCard,
   onPlayAgain,
   onSendChat,
@@ -164,8 +172,8 @@ export function GamePanel({
   const [playAnimationCard, setPlayAnimationCard] = useState<Card | null>(null);
   const [revealedCardVisible, setRevealedCardVisible] = useState(false);
   const [countdownTick, setCountdownTick] = useState(() => Date.now());
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [micStream, setMicStream] = useState<MediaStream | null>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(initialCameraStream ?? null);
+  const [micStream, setMicStream] = useState<MediaStream | null>(initialMicStream ?? null);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [remoteVideoFrames, setRemoteVideoFrames] = useState<Record<string, string>>({});
   const [cameraError, setCameraError] = useState("");
@@ -715,6 +723,7 @@ export function GamePanel({
     if (cameraStream) {
       cameraStream.getTracks().forEach((track) => track.stop());
       setCameraStream(null);
+      onCameraStreamChange?.(null);
       return;
     }
 
@@ -729,6 +738,7 @@ export function GamePanel({
       });
 
       setCameraStream(stream);
+      onCameraStreamChange?.(stream);
     } catch {
       setCameraError("Camera permission was blocked.");
     }
@@ -740,6 +750,7 @@ export function GamePanel({
     if (micStream) {
       micStream.getTracks().forEach((track) => track.stop());
       setMicStream(null);
+      onMicStreamChange?.(null);
       return;
     }
 
@@ -750,6 +761,7 @@ export function GamePanel({
       });
 
       setMicStream(stream);
+      onMicStreamChange?.(stream);
     } catch {
       setCameraError("Microphone permission was blocked.");
     }

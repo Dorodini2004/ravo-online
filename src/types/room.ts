@@ -6,6 +6,25 @@ export type Player = {
   name: string;
 };
 
+export type LobbyMaskPlayer = {
+  id: string;
+  name: string;
+  score: number;
+  x: number;
+  y: number;
+};
+
+export type LobbyMaskHill = {
+  hill: {
+    radius: number;
+    x: number;
+    y: number;
+  };
+  players: LobbyMaskPlayer[];
+  winnerId: string | null;
+  winnerName: string | null;
+};
+
 export type NumberCard = {
   id: string;
   type: "number";
@@ -44,6 +63,7 @@ export type Room = {
   lastRevealCallers: string[];
   log: string[];
   lastRevealWasChallenged: boolean;
+  lobbyGame: LobbyMaskHill;
   pendingPlayedCard: Card | null;
   pendingRavoCallers: string[];
   players: Player[];

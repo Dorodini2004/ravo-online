@@ -6,6 +6,9 @@ const dev = process.env.NODE_ENV !== "production";
 const hostname = dev ? "localhost" : "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 const challengeWindowMs = 5000;
+const lobbyArenaSize = 100;
+const lobbyHill = { x: 50, y: 50, radius: 17 };
+const lobbyScoreLimit = 50;
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -107,6 +110,7 @@ function getPublicRoom(room) {
     lastRevealedCardLabel: room.lastRevealedCardLabel,
     lastRevealCallers: room.lastRevealCallers,
     lastRevealWasChallenged: room.lastRevealWasChallenged,
+    lobbyGame: getPublicLobbyGame(room),
     log: room.log.slice(-8),
     pendingRavoCallers: Array.from(room.pendingRavoCallers),
     pendingPlayedCard: room.pendingPlay?.card ?? null,
@@ -115,6 +119,68 @@ function getPublicRoom(room) {
     status: room.status,
     winnerId: room.winnerId,
   };
+}
+
+function createLobbyGame() {
+  return {
+    hill: lobbyHill,
+    players: new Map(),
+    winnerId: null,
+    winnerName: null,
+  };
+}
+
+function getLobbySpawn(index) {
+  const spawns = [
+    { x: 18, y: 18 },
+    { x: 82, y: 18 },
+    { x: 18, y: 82 },
+    { x: 82, y: 82 },
+    { x: 50, y: 16 },
+    { x: 50, y: 84 },
+    { x: 16, y: 50 },
+    { x: 84, y: 50 },
+  ];
+
+  return spawns[index % spawns.length];
+}
+
+function ensureLobbyPlayer(room, playerId) {
+  if (room.lobbyGame.players.has(playerId)) {
+    return;
+  }
+
+  const player = room.players.get(playerId);
+  const spawn = getLobbySpawn(room.lobbyGame.players.size);
+
+  room.lobbyGame.players.set(playerId, {
+    id: playerId,
+    name: player?.name ?? "Player",
+    score: 0,
+    x: spawn.x,
+    y: spawn.y,
+  });
+}
+
+function getPublicLobbyGame(room) {
+  for (const player of room.players.values()) {
+    ensureLobbyPlayer(room, player.id);
+  }
+
+  return {
+    hill: room.lobbyGame.hill,
+    players: Array.from(room.lobbyGame.players.values()).filter((player) => room.players.has(player.id)),
+    winnerId: room.lobbyGame.winnerId,
+    winnerName: room.lobbyGame.winnerName,
+  };
+}
+
+function resetLobbyGame(room) {
+  room.lobbyGame = createLobbyGame();
+
+  for (const player of room.players.values()) {
+    ensureLobbyPlayer(room, player.id);
+  }
 }
 
 function getNextExpectedNumber(currentNumber) {
@@ -335,6 +401,7 @@ function createRoom(socket, roomCode) {
     lastRevealedCardLabel: null,
     lastRevealCallers: [],
     lastRevealWasChallenged: false,
+    lobbyGame: createLobbyGame(),
     log: [],
     pendingPlay: null,
     pendingRavoCallers: new Set(),
@@ -352,6 +419,46 @@ function createRoom(socket, roomCode) {
 app.prepare().then(() => {
   const httpServer = createServer(handle);
   const io = new Server(httpServer);
+
+  setInterval(() => {
+    for (const room of rooms.values()) {
+      if (room.status !== "waiting") {
+        continue;
+      }
+
+      let changed = false;
+
+      for (const player of room.players.values()) {
+        ensureLobbyPlayer(room, player.id);
+      }
+
+      for (const lobbyPlayer of room.lobbyGame.players.values()) {
+        if (!room.players.has(lobbyPlayer.id)) {
+          continue;
+        }
+
+        const distanceFromHill = Math.hypot(
+          lobbyPlayer.x - room.lobbyGame.hill.x,
+          lobbyPlayer.y - room.lobbyGame.hill.y,
+        );
+
+        if (distanceFromHill <= room.lobbyGame.hill.radius && !room.lobbyGame.winnerId) {
+          lobbyPlayer.score = Math.min(lobbyScoreLimit, lobbyPlayer.score + 1);
+          changed = true;
+
+          if (lobbyPlayer.score >= lobbyScoreLimit) {
+            room.lobbyGame.winnerId = lobbyPlayer.id;
+            room.lobbyGame.winnerName = lobbyPlayer.name;
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        io.to(room.code).emit("room:updated", getPublicRoom(room));
+      }
+    }
+  }, 500);
 
   io.on("connection", (socket) => {
     console.log(`Player connected: ${socket.id}`);
@@ -375,6 +482,7 @@ app.prepare().then(() => {
 
       room.players.set(socket.id, player);
       room.mediaStatus.set(socket.id, { cameraOn: false, micOn: false });
+      ensureLobbyPlayer(room, socket.id);
       rooms.set(roomCode, room);
       socket.join(roomCode);
       socket.data.roomCode = roomCode;
@@ -421,6 +529,7 @@ app.prepare().then(() => {
 
       room.players.set(socket.id, player);
       room.mediaStatus.set(socket.id, { cameraOn: false, micOn: false });
+      ensureLobbyPlayer(room, socket.id);
       socket.join(normalizedRoomCode);
       socket.data.roomCode = normalizedRoomCode;
       socket.data.playerName = trimmedName;
@@ -449,6 +558,8 @@ app.prepare().then(() => {
       }
 
       resetGameRound(room);
+      room.lobbyGame.winnerId = null;
+      room.lobbyGame.winnerName = null;
 
       addLog(room, "The game started. Each player received 8 cards.");
       callback({ ok: true, room: getPublicRoom(room) });
@@ -698,6 +809,7 @@ app.prepare().then(() => {
       room.winnerId = null;
       room.discardPile = [];
       room.drawPile = [];
+      resetLobbyGame(room);
       clearChallengeTimer(room);
       addLog(room, "Players returned to the lobby.");
       callback?.({ ok: true, room: getPublicRoom(room) });
@@ -719,7 +831,42 @@ app.prepare().then(() => {
         cameraOn: Boolean(cameraOn),
         micOn: Boolean(micOn),
       });
+      io.to(room.code).emit("room:updated", getPublicRoom(room));
       emitPrivateGameState(io, room);
+    });
+
+    socket.on("lobby:move", ({ dx, dy }) => {
+      const room = rooms.get(socket.data.roomCode);
+
+      if (!room || room.status !== "waiting") {
+        return;
+      }
+
+      ensureLobbyPlayer(room, socket.id);
+      const lobbyPlayer = room.lobbyGame.players.get(socket.id);
+
+      if (!lobbyPlayer) {
+        return;
+      }
+
+      const safeDx = Math.max(-1, Math.min(1, Number(dx) || 0));
+      const safeDy = Math.max(-1, Math.min(1, Number(dy) || 0));
+      const length = Math.hypot(safeDx, safeDy) || 1;
+      const speed = 2.2;
+
+      lobbyPlayer.x = Math.max(4, Math.min(lobbyArenaSize - 4, lobbyPlayer.x + (safeDx / length) * speed));
+      lobbyPlayer.y = Math.max(4, Math.min(lobbyArenaSize - 4, lobbyPlayer.y + (safeDy / length) * speed));
+    });
+
+    socket.on("lobby:restart", () => {
+      const room = rooms.get(socket.data.roomCode);
+
+      if (!room || room.status !== "waiting") {
+        return;
+      }
+
+      resetLobbyGame(room);
+      io.to(room.code).emit("room:updated", getPublicRoom(room));
     });
 
     socket.on("media:video-frame", ({ frame }) => {
@@ -791,6 +938,7 @@ app.prepare().then(() => {
         room.players.delete(socket.id);
         room.hands.delete(socket.id);
         room.mediaStatus.delete(socket.id);
+        room.lobbyGame.players.delete(socket.id);
         room.pendingRavoCallers.delete(socket.id);
         socket.to(room.code).emit("webrtc:peer-left", {
           peerId: socket.id,

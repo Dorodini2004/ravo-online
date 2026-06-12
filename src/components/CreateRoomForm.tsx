@@ -18,7 +18,9 @@ export function CreateRoomForm() {
   const [error, setError] = useState("");
   const [currentPlayerId, setCurrentPlayerId] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [hand, setHand] = useState<Card[]>([]);
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
@@ -171,8 +173,12 @@ export function CreateRoomForm() {
         currentPlayerId={currentPlayerId}
         error={error}
         hand={hand}
+        initialCameraStream={cameraStream}
+        initialMicStream={micStream}
+        onCameraStreamChange={setCameraStream}
         onCallRavo={handleCallRavo}
         onDrawCard={handleDrawCard}
+        onMicStreamChange={setMicStream}
         onPlayCard={handlePlayCard}
         onPlayAgain={() => {
           socketRef.current?.emit("game:play-again", (response: RoomResponse) => {
@@ -196,10 +202,15 @@ export function CreateRoomForm() {
   if (room) {
     return (
       <RoomPanel
+        cameraStream={cameraStream}
         currentPlayerId={currentPlayerId}
         error={error}
+        micStream={micStream}
+        onCameraStreamChange={setCameraStream}
+        onMicStreamChange={setMicStream}
         onStartGame={handleStartGame}
         room={room}
+        socket={socketRef.current}
       />
     );
   }
