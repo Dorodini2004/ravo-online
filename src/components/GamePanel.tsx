@@ -171,6 +171,7 @@ export function GamePanel({
   const [settings, setSettings] = useState<DisplaySettings>(() => loadDisplaySettings());
   const [stageScale, setStageScale] = useState(1);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const peerIdsRef = useRef<Set<string>>(new Set());
   const localMediaStreamRef = useRef<MediaStream | null>(null);
   const me = room.players.find((player) => player.id === currentPlayerId);
   const winner = room.players.find((player) => player.id === room.winnerId);
@@ -278,7 +279,10 @@ export function GamePanel({
     });
     localMediaStreamRef.current = nextStream;
 
-    for (const connection of peerConnectionsRef.current.values()) {
+    async function updatePeerConnections() {
+      const renegotiations: Promise<void>[] = [];
+
+      for (const [peerId, connection] of peerConnectionsRef.current.entries()) {
       const senders = connection.getSenders();
 
       for (const sender of senders) {
@@ -288,8 +292,34 @@ export function GamePanel({
       nextStream.getTracks().forEach((track) => {
         connection.addTrack(track, nextStream);
       });
+
+        if (socket && connection.signalingState === "stable") {
+          renegotiations.push(
+            connection
+              .createOffer()
+              .then((offer) => connection.setLocalDescription(offer).then(() => offer))
+              .then((offer) => {
+                socket.emit("webrtc:offer", {
+                  offer,
+                  to: peerId,
+                });
+              })
+              .catch(() => {
+                peerConnectionsRef.current.delete(peerId);
+              }),
+          );
+        }
+      }
+
+      if (socket && peerConnectionsRef.current.size === 0 && (isCameraOn || isMicOn)) {
+        socket.emit("webrtc:ready");
+      }
+
+      await Promise.all(renegotiations);
     }
-  }, [cameraStream, isMicOn, micStream]);
+
+    void updatePeerConnections();
+  }, [cameraStream, isCameraOn, isMicOn, micStream, socket]);
 
   useEffect(() => {
     if (!socket || !currentPlayerId || room.status === "waiting") {
@@ -347,6 +377,7 @@ export function GamePanel({
     };
 
     async function createOffer(peerId: string) {
+      peerIdsRef.current.add(peerId);
       const connection = createPeerConnection(peerId);
       const offer = await connection.createOffer();
       await connection.setLocalDescription(offer);
@@ -356,6 +387,7 @@ export function GamePanel({
     async function handleExistingPeers({ peerIds }: { peerIds: string[] }) {
       for (const peerId of peerIds) {
         if (peerId !== currentPlayerId) {
+          peerIdsRef.current.add(peerId);
           await createOffer(peerId);
         }
       }
@@ -363,11 +395,13 @@ export function GamePanel({
 
     async function handlePeerReady({ peerId }: { peerId: string }) {
       if (peerId !== currentPlayerId) {
+        peerIdsRef.current.add(peerId);
         await createOffer(peerId);
       }
     }
 
     async function handleOffer({ from, offer }: { from: string; offer: RTCSessionDescriptionInit }) {
+      peerIdsRef.current.add(from);
       const connection = createPeerConnection(from);
       await connection.setRemoteDescription(new RTCSessionDescription(offer));
       const answer = await connection.createAnswer();
@@ -394,6 +428,7 @@ export function GamePanel({
     function handlePeerLeft({ peerId }: { peerId: string }) {
       peerConnectionsRef.current.get(peerId)?.close();
       peerConnectionsRef.current.delete(peerId);
+      peerIdsRef.current.delete(peerId);
       setRemoteStreams((current) => {
         const next = { ...current };
         delete next[peerId];
@@ -1014,11 +1049,9 @@ function OpponentSeat({
         {remoteStream && player.cameraOn ? (
           <RemoteVideo stream={remoteStream} />
         ) : (
-          <>
-            <div>CAMERA OFF</div>
-            {remoteStream && player.micOn ? <RemoteAudio stream={remoteStream} /> : null}
-          </>
+          <div>CAMERA OFF</div>
         )}
+        {remoteStream && player.micOn ? <RemoteAudio stream={remoteStream} /> : null}
       </div>
       <div className="ravo-opponent-cards">
         {Array.from({ length: Math.max(1, Math.min(7, player.cardCount ?? 0)) }).map((_, index) => (
@@ -1046,6 +1079,7 @@ function RemoteVideo({ stream }: { stream: MediaStream }) {
     <video
       ref={videoRef}
       autoPlay
+      muted
       playsInline
       className="ravo-remote-video"
     />

@@ -45,14 +45,6 @@ export function LocalCamera({
           </div>
         )}
 
-        <div className="local-camera-actions">
-          <span className={isMicOn ? "status-on" : "status-off"}>
-            Mic {isMicOn ? "On" : "Off"}
-          </span>
-          <span className={isCameraOn ? "status-on" : "status-off"}>
-            Cam {isCameraOn ? "On" : "Off"}
-          </span>
-        </div>
       </div>
 
       {cameraError ? <p className="local-camera-error">{cameraError}</p> : null}
