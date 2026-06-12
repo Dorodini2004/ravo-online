@@ -1203,10 +1203,10 @@ function OpponentSeat({
     <div className={`ravo-opponent-zone ${seat.className} ${isTurn ? "active" : ""} ${cameraClass} ${micClass}`}>
       <div className="ravo-opponent-camera">
         <span>{player.name}</span>
-        {remoteStream && player.cameraOn ? (
-          <RemoteVideo stream={remoteStream} />
-        ) : fallbackFrame && player.cameraOn ? (
+        {fallbackFrame && player.cameraOn ? (
           <img src={fallbackFrame} alt={`${player.name} camera`} className="ravo-remote-video" />
+        ) : remoteStream && player.cameraOn ? (
+          <RemoteVideo stream={remoteStream} />
         ) : (
           <div>CAMERA OFF</div>
         )}
