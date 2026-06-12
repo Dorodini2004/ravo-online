@@ -722,6 +722,32 @@ app.prepare().then(() => {
       emitPrivateGameState(io, room);
     });
 
+    socket.on("media:video-frame", ({ frame }) => {
+      const room = rooms.get(socket.data.roomCode);
+
+      if (!room || typeof frame !== "string" || frame.length > 180000) {
+        return;
+      }
+
+      socket.to(room.code).emit("media:video-frame", {
+        frame,
+        playerId: socket.id,
+      });
+    });
+
+    socket.on("media:audio-chunk", ({ chunk }) => {
+      const room = rooms.get(socket.data.roomCode);
+
+      if (!room || typeof chunk !== "string" || chunk.length > 260000) {
+        return;
+      }
+
+      socket.to(room.code).emit("media:audio-chunk", {
+        chunk,
+        playerId: socket.id,
+      });
+    });
+
     socket.on("webrtc:ready", () => {
       const room = rooms.get(socket.data.roomCode);
 

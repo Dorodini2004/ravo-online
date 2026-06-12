@@ -167,6 +167,7 @@ export function GamePanel({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+  const [remoteVideoFrames, setRemoteVideoFrames] = useState<Record<string, string>>({});
   const [cameraError, setCameraError] = useState("");
   const [settings, setSettings] = useState<DisplaySettings>(() => loadDisplaySettings());
   const [stageScale, setStageScale] = useState(1);
@@ -267,6 +268,123 @@ export function GamePanel({
       micOn: isMicOn,
     });
   }, [isCameraOn, isMicOn, socket]);
+
+  useEffect(() => {
+    if (!socket || !cameraStream || !isCameraOn) {
+      return;
+    }
+
+    const activeSocket = socket;
+    const video = document.createElement("video");
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    let intervalId = 0;
+    let isStopped = false;
+
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = cameraStream;
+
+    async function startFrameRelay() {
+      try {
+        await video.play();
+      } catch {
+        return;
+      }
+
+      canvas.width = 320;
+      canvas.height = 180;
+      intervalId = window.setInterval(() => {
+        if (isStopped || !context || video.readyState < 2) {
+          return;
+        }
+
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        activeSocket.emit("media:video-frame", {
+          frame: canvas.toDataURL("image/jpeg", 0.48),
+        });
+      }, 220);
+    }
+
+    void startFrameRelay();
+
+    return () => {
+      isStopped = true;
+      window.clearInterval(intervalId);
+      video.srcObject = null;
+    };
+  }, [cameraStream, isCameraOn, socket]);
+
+  useEffect(() => {
+    if (!socket || !micStream || !isMicOn || typeof MediaRecorder === "undefined") {
+      return;
+    }
+
+    const activeSocket = socket;
+    let recorder: MediaRecorder | null = null;
+
+    try {
+      recorder = new MediaRecorder(micStream, { mimeType: "audio/webm" });
+    } catch {
+      try {
+        recorder = new MediaRecorder(micStream);
+      } catch {
+        return;
+      }
+    }
+
+    recorder.ondataavailable = (event) => {
+      if (!event.data.size) {
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === "string") {
+          activeSocket.emit("media:audio-chunk", {
+            chunk: reader.result,
+          });
+        }
+      };
+      reader.readAsDataURL(event.data);
+    };
+
+    recorder.start(800);
+
+    return () => {
+      if (recorder?.state !== "inactive") {
+        recorder?.stop();
+      }
+    };
+  }, [isMicOn, micStream, socket]);
+
+  useEffect(() => {
+    if (!socket) {
+      return;
+    }
+
+    function handleVideoFrame({ frame, playerId }: { frame: string; playerId: string }) {
+      setRemoteVideoFrames((current) => ({
+        ...current,
+        [playerId]: frame,
+      }));
+    }
+
+    function handleAudioChunk({ chunk }: { chunk: string; playerId: string }) {
+      const audio = new Audio(chunk);
+      audio.volume = 0.9;
+      void audio.play().catch(() => undefined);
+    }
+
+    socket.on("media:video-frame", handleVideoFrame);
+    socket.on("media:audio-chunk", handleAudioChunk);
+
+    return () => {
+      socket.off("media:video-frame", handleVideoFrame);
+      socket.off("media:audio-chunk", handleAudioChunk);
+    };
+  }, [socket]);
 
   useEffect(() => {
     const nextStream = new MediaStream();
@@ -792,6 +910,7 @@ export function GamePanel({
               seat={seat}
               isTurn={seat.player.id === room.currentTurnPlayerId}
               remoteStream={remoteStreams[seat.player.id] ?? null}
+              fallbackFrame={remoteVideoFrames[seat.player.id] ?? null}
             />
           ))}
 
@@ -1066,10 +1185,12 @@ function DisplaySettingsPanel({
 }
 
 function OpponentSeat({
+  fallbackFrame,
   isTurn,
   remoteStream,
   seat,
 }: {
+  fallbackFrame: string | null;
   isTurn: boolean;
   remoteStream: MediaStream | null;
   seat: OpponentSeat;
@@ -1084,6 +1205,8 @@ function OpponentSeat({
         <span>{player.name}</span>
         {remoteStream && player.cameraOn ? (
           <RemoteVideo stream={remoteStream} />
+        ) : fallbackFrame && player.cameraOn ? (
+          <img src={fallbackFrame} alt={`${player.name} camera`} className="ravo-remote-video" />
         ) : (
           <div>CAMERA OFF</div>
         )}
