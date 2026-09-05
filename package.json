@@ -6,7 +6,8 @@
     "dev": "node server.mjs",
     "build": "next build",
     "start": "node server.mjs",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test"
   },
   "dependencies": {
     "next": "16.2.9",

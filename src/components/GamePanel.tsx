@@ -21,6 +21,7 @@ type GamePanelProps = {
   onCameraStreamChange?: (stream: MediaStream | null) => void;
   onCallRavo: () => void;
   onDrawCard: () => void;
+  onEndBluffExtra: () => void;
   onMicStreamChange?: (stream: MediaStream | null) => void;
   onPlayCard: (cardId: string) => void;
   onPlayAgain: () => void;
@@ -83,10 +84,6 @@ function getCardLabel(card: Card) {
   return "BLUFF";
 }
 
-function getNextNumber(currentNumber: number) {
-  return currentNumber === 9 ? 1 : currentNumber + 1;
-}
-
 function getNextScale(currentScale: number, direction: -1 | 1) {
   const currentIndex = SCALE_OPTIONS.indexOf(currentScale);
 
@@ -122,6 +119,8 @@ function getOpponentSeats(opponents: Player[]): OpponentSeat[] {
     { key: "top-right", className: "seat-top-right" },
     { key: "left-center", className: "seat-left-center" },
     { key: "right-center", className: "seat-right-center" },
+    { key: "bottom-left", className: "seat-bottom-left" },
+    { key: "bottom-right", className: "seat-bottom-right" },
   ];
 
   return opponents.slice(0, positions.length).map((player, index) => {
@@ -145,6 +144,7 @@ export function GamePanel({
   onCameraStreamChange,
   onCallRavo,
   onDrawCard,
+  onEndBluffExtra,
   onMicStreamChange,
   onPlayCard,
   onPlayAgain,
@@ -980,9 +980,12 @@ export function GamePanel({
                 {me?.name ?? "Player"} - {hand.length} cards
               </small>
               {room.status === "bluff-extra" && room.bluffExtraPlayerId === currentPlayerId ? (
-                <em className="ravo-bluff-extra-note">
-                  BLUFF SUCCESS - play {room.bluffExtraRemaining} extra cards
-                </em>
+                <>
+                  <em className="ravo-bluff-extra-note">
+                    BLUFF SUCCESS - play up to {room.bluffExtraRemaining} extra cards
+                  </em>
+                  <button type="button" onClick={onEndBluffExtra}>End bonus</button>
+                </>
               ) : null}
               {selectedCard ? (
                 <button type="button" disabled={!canPlayCard} onClick={handlePlaySelected}>
@@ -1114,6 +1117,18 @@ export function GamePanel({
                 <button type="button" onClick={onPlayAgain}>
                   Play Again
                 </button>
+              </div>
+            </div>
+          ) : null}
+
+          {room.status === "draw-pile-empty" ? (
+            <div className="ravo-win">
+              <div>
+                <p>Game Paused</p>
+                <h2>Not enough cards for the pending penalty</h2>
+                <small>
+                  {room.pendingPenalty?.count ?? 2} cards are owed, but too few cards remain even after reshuffling.
+                </small>
               </div>
             </div>
           ) : null}

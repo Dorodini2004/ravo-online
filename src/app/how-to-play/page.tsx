@@ -4,43 +4,92 @@ import { CardImage } from "@/components/CardImage";
 const sections = [
   {
     icon: "◎",
-    title: "Goal",
-    lines: ["Be the first player to get rid of all cards."],
-  },
-  {
-    icon: "▥",
-    title: "Setup",
-    lines: ["2-8 players", "8 cards each", "Draw pile", "Face-down discard pile"],
+    title: "Goal & Setup",
+    lines: [
+      "RAVO is played by 2-8 players.",
+      "Every player receives 8 cards.",
+      "The 90-card deck contains nine copies of each number from 1 to 9, 6 RAVO Jokers, and 3 BLUFF cards.",
+      "Be the first player to empty your hand.",
+    ],
   },
   {
     icon: "↓",
-    title: "Start",
-    lines: ["Every player draws one card", "Lowest card starts", "Next number becomes active"],
+    title: "Starting the Game",
+    lines: [
+      "The server randomly chooses the starting player. Everyone has the same chance.",
+      "No extra cards are drawn to choose who starts, and the lowest card does not matter.",
+      "The first required number is always 1.",
+      "Play continues from the chosen starting player in the existing seating order.",
+      "A new starting player is chosen every time a new game begins, including after Play Again.",
+    ],
+  },
+  {
+    icon: "▥",
+    title: "Number Sequence",
+    lines: [
+      "The required number follows the fixed sequence 1 → 2 → ... → 9 → 1.",
+      "It advances exactly once after each completed turn, including a draw or a resolved RAVO call.",
+      "BLUFF bonus cards belong to the same turn, so the number advances only after the entire bonus ends.",
+    ],
   },
   {
     icon: "↯",
-    title: "Turn",
-    lines: ["Play exactly one card face-down", "Announce the next number", "Tell the truth or bluff", "Or draw one card"],
+    title: "Your Turn",
+    lines: [
+      "Either play any one hand card face-down or draw one card and end your turn.",
+      "When you play, your claim is automatically the current required number.",
+      "You may deliberately play a different number card. That is a legal bluff.",
+    ],
   },
   {
     icon: "!",
-    title: "RAVO",
-    lines: ["Another player may call RAVO", "If the card was a bluff: player who played it draws 2 cards", "If the card was truthful: caller draws 2 cards"],
+    title: "RAVO Call",
+    lines: [
+      "Other players have 5 seconds to challenge the face-down card. You cannot challenge your own card.",
+      "If the number matches the claim, the caller was wrong and draws 2 cards.",
+      "If the number does not match, the player was bluffing and draws 2 cards.",
+      "The played card remains on the discard pile in either case.",
+      "Without a RAVO call, even a false number receives no penalty.",
+      "The first valid call received by the server decides the challenge; later calls are rejected.",
+    ],
   },
   {
     icon: "★",
     title: "RAVO Joker",
-    lines: ["Counts as any number", "Always truthful"],
+    lines: [
+      "A RAVO Joker counts as every required number and is always truthful.",
+      "A player who challenges a Joker draws 2 cards.",
+    ],
   },
   {
     icon: "?",
     title: "BLUFF Card",
-    lines: ["If someone incorrectly calls RAVO:", "Caller draws 3 cards", "BLUFF player immediately gets another turn"],
+    lines: [
+      "A BLUFF card may be played at any required number.",
+      "Without a RAVO call, it gives no bonus and the turn ends normally.",
+      "If challenged, the player may discard up to 2 more cards face-down. The caller receives no penalty.",
+      "Bonus cards may be any cards. They cannot be challenged and trigger no additional card effects.",
+      "All bonus cards are part of the same turn. The player may stop after 0, 1, or 2 bonus cards.",
+    ],
   },
   {
     icon: "♛",
-    title: "Win",
-    lines: ["First player with zero cards wins."],
+    title: "Winning",
+    lines: [
+      "After a normal last card, victory is checked only after the RAVO window and any call are fully resolved.",
+      "An honest last number or Joker still wins after an incorrect call.",
+      "If a false last number is caught, the player draws 2 cards and the game continues.",
+      "A last BLUFF card wins even when challenged. Emptying your hand with the first bonus card also wins immediately.",
+    ],
+  },
+  {
+    icon: "↻",
+    title: "Reshuffling",
+    lines: [
+      "When the draw pile runs out, keep the top discard card on the table.",
+      "Shuffle all older discarded cards and use them as the new draw pile.",
+      "If too few recyclable cards remain to pay a complete penalty, the game pauses instead of cancelling part of the penalty or awarding a win.",
+    ],
   },
 ];
 

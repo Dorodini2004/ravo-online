@@ -1428,6 +1428,16 @@ button {
   right: auto;
 }
 
+.seat-bottom-left {
+  left: 20px;
+  bottom: 215px;
+}
+
+.seat-bottom-right {
+  right: 20px;
+  bottom: 215px;
+}
+
 .ravo-opponent-camera {
   position: relative;
   overflow: hidden;

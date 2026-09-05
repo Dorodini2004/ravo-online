@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { pathToFileURL } from "node:url";
 import next from "next";
 import { Server } from "socket.io";
 
@@ -11,7 +12,7 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 const rooms = new Map();
 
-function createPlayableDeck() {
+export function createPlayableDeck() {
   const deck = [];
 
   for (let value = 1; value <= 9; value += 1) {
@@ -72,15 +73,15 @@ function getCardLabel(card) {
   return "BLUFF";
 }
 
-function isTruthfulPlay(card, announcedNumber) {
-  if (card.type === "ravo-joker" || card.type === "bluff") {
+export function isTruthfulPlay(card, announcedNumber) {
+  if (card.type === "ravo-joker") {
     return true;
   }
 
   return card.value === announcedNumber;
 }
 
-function getPublicRoom(room) {
+export function getPublicRoom(room) {
   const players = Array.from(room.players.values()).map((player) => ({
     ...player,
     cardCount: room.hands.get(player.id)?.length ?? 0,
@@ -100,7 +101,7 @@ function getPublicRoom(room) {
     hostId: room.hostId,
     lastClaimedNumber: room.pendingPlay?.announcedNumber ?? room.lastClaimedNumber,
     lastAnnouncement: room.lastAnnouncement,
-    lastPlayedCard: room.pendingPlay?.card ?? room.lastPlayedCard,
+    lastPlayedCard: room.pendingPlay ? null : room.lastPlayedCard,
     lastPlayedBy: room.lastPlayedBy,
     lastRevealedAt: room.lastRevealedAt,
     lastRevealedCard: room.lastRevealedCard,
@@ -109,15 +110,19 @@ function getPublicRoom(room) {
     lastRevealWasChallenged: room.lastRevealWasChallenged,
     log: room.log.slice(-8),
     pendingRavoCallers: Array.from(room.pendingRavoCallers),
-    pendingPlayedCard: room.pendingPlay?.card ?? null,
+    pendingPlayedCard: Boolean(room.pendingPlay),
+    pendingPenalty: room.pendingPenalty
+      ? { count: room.pendingPenalty.count, playerId: room.pendingPenalty.playerId }
+      : null,
     players,
     roundNumber: room.roundNumber,
+    startingPlayerId: room.startingPlayerId,
     status: room.status,
     winnerId: room.winnerId,
   };
 }
 
-function getNextExpectedNumber(currentNumber) {
+export function getNextExpectedNumber(currentNumber) {
   return currentNumber === 9 ? 1 : currentNumber + 1;
 }
 
@@ -130,15 +135,23 @@ function getNextPlayerId(room, fromPlayerId = room.currentTurnPlayerId) {
   return players[nextIndex].id;
 }
 
+function advanceTurn(room, fromPlayerId) {
+  const nextPlayerId = getNextPlayerId(room, fromPlayerId);
+  room.currentTurnPlayerId = nextPlayerId;
+  if (nextPlayerId === room.startingPlayerId) room.roundNumber += 1;
+  return nextPlayerId;
+}
+
 function addLog(room, message) {
   room.log.push(message);
 }
 
-function drawCards(room, playerId, count) {
+export function drawCards(room, playerId, count) {
   const hand = room.hands.get(playerId) ?? [];
   let drawnCount = 0;
 
   for (let index = 0; index < count; index += 1) {
+    if (room.drawPile.length === 0) refillDrawPile(room);
     const card = room.drawPile.shift();
 
     if (!card) {
@@ -151,6 +164,38 @@ function drawCards(room, playerId, count) {
 
   room.hands.set(playerId, hand);
   return drawnCount;
+}
+
+export function refillDrawPile(room) {
+  if (room.discardPile.length <= 1) return 0;
+
+  const topDiscard = room.discardPile.at(-1);
+  const recycledCards = room.discardPile.slice(0, -1).map((play) => play.card);
+  room.discardPile = [topDiscard];
+  room.drawPile.push(...shuffleDeck(recycledCards));
+  addLog(room, `${recycledCards.length} discarded cards were reshuffled into the draw pile.`);
+  return recycledCards.length;
+}
+
+function ensureCardsAvailable(room, count) {
+  if (room.drawPile.length >= count) return true;
+  refillDrawPile(room);
+  return room.drawPile.length >= count;
+}
+
+function applyPenalty(room, playerId, count) {
+  if (!ensureCardsAvailable(room, count)) {
+    room.pendingPenalty = { count, playerId };
+    room.status = "draw-pile-empty";
+    addLog(
+      room,
+      `Game paused: ${count} penalty cards are owed, but only ${room.drawPile.length} remain.`,
+    );
+    return false;
+  }
+
+  drawCards(room, playerId, count);
+  return true;
 }
 
 function checkWinner(room, playerId) {
@@ -167,9 +212,12 @@ function checkWinner(room, playerId) {
   return false;
 }
 
-function resetGameRound(room) {
+export function resetGameRound(room, selectStartingPlayer = Math.random) {
   room.status = "playing";
-  room.currentTurnPlayerId = Array.from(room.players.keys())[0];
+  const playerIds = Array.from(room.players.keys());
+  const startIndex = Math.min(playerIds.length - 1, Math.floor(selectStartingPlayer() * playerIds.length));
+  room.startingPlayerId = playerIds[startIndex];
+  room.currentTurnPlayerId = room.startingPlayerId;
   room.expectedNumber = 1;
   room.hands.clear();
   room.lastAnnouncement = null;
@@ -182,6 +230,7 @@ function resetGameRound(room) {
   room.lastRevealCallers = [];
   room.lastRevealWasChallenged = false;
   room.pendingPlay = null;
+  room.pendingPenalty = null;
   room.pendingRavoCallers.clear();
   room.bluffExtraPlayerId = null;
   room.bluffExtraRemaining = 0;
@@ -204,7 +253,7 @@ function clearChallengeTimer(room) {
   }
 }
 
-function emitPrivateGameState(io, room) {
+export function emitPrivateGameState(io, room) {
   for (const player of room.players.values()) {
     io.to(player.id).emit("game:state", {
       room: getPublicRoom(room),
@@ -213,21 +262,22 @@ function emitPrivateGameState(io, room) {
   }
 }
 
-function finishPendingPlay(io, room) {
+export function finishPendingPlay(io, room) {
   if (!room.pendingPlay || room.status !== "challenge") {
     return;
   }
 
   clearChallengeTimer(room);
+  room.status = "resolving";
 
   const pendingPlay = room.pendingPlay;
   const callers = Array.from(room.pendingRavoCallers);
   const playedByName = room.players.get(pendingPlay.playerId)?.name ?? "A player";
   const isTruthful = isTruthfulPlay(pendingPlay.card, pendingPlay.announcedNumber);
   const isBluffCard = pendingPlay.card.type === "bluff";
-  let nextTurnPlayerId = getNextPlayerId(room, pendingPlay.playerId);
-  let advanceSequence = true;
+  const nextTurnPlayerId = getNextPlayerId(room, pendingPlay.playerId);
   let startsBluffExtra = false;
+  let penaltyPaid = true;
 
   console.log("revealing card:", pendingPlay.card);
 
@@ -249,8 +299,6 @@ function finishPendingPlay(io, room) {
   if (callers.length === 0) {
     addLog(room, `${playedByName}'s card was not challenged.`);
   } else if (isBluffCard) {
-    nextTurnPlayerId = pendingPlay.playerId;
-    advanceSequence = false;
     startsBluffExtra = true;
     addLog(room, `BLUFF SUCCESS - ${playedByName} may play 2 extra cards.`);
     io.to(room.code).emit("game:bluff-success", {
@@ -258,36 +306,26 @@ function finishPendingPlay(io, room) {
       playerName: playedByName,
       extraCards: 2,
     });
-  } else if (callers.length >= 2) {
-    for (const callerId of callers) {
-      const drawnCount = drawCards(room, callerId, 3);
-      addLog(
-        room,
-        `${room.players.get(callerId)?.name ?? "A caller"} called RAVO at the same time and drew ${drawnCount} cards.`,
-      );
-    }
   } else {
     const callerId = callers[0];
     const callerName = room.players.get(callerId)?.name ?? "A caller";
 
     if (isTruthful) {
-      const drawnCount = drawCards(room, callerId, 2);
-      addLog(
-        room,
-        `${callerName} called RAVO incorrectly and drew ${drawnCount} cards.`,
-      );
+      penaltyPaid = applyPenalty(room, callerId, 2);
+      if (penaltyPaid) {
+        addLog(room, `${callerName} called RAVO incorrectly and drew 2 cards.`);
+      }
     } else {
-      const drawnCount = drawCards(room, pendingPlay.playerId, 2);
-      addLog(
-        room,
-        `${playedByName} was caught bluffing and drew ${drawnCount} cards.`,
-      );
+      penaltyPaid = applyPenalty(room, pendingPlay.playerId, 2);
+      if (penaltyPaid) {
+        addLog(room, `${playedByName} was caught bluffing and drew 2 cards.`);
+      }
     }
   }
 
-  const didPlayedPlayerWin = checkWinner(room, pendingPlay.playerId);
+  const didPlayedPlayerWin = penaltyPaid && checkWinner(room, pendingPlay.playerId);
 
-  if (!didPlayedPlayerWin) {
+  if (penaltyPaid && !didPlayedPlayerWin) {
     if (startsBluffExtra) {
       room.status = "bluff-extra";
       room.currentTurnPlayerId = pendingPlay.playerId;
@@ -299,13 +337,9 @@ function finishPendingPlay(io, room) {
       room.currentTurnPlayerId = nextTurnPlayerId;
       addLog(room, `${room.players.get(nextTurnPlayerId)?.name ?? "Next player"}'s turn started.`);
 
-      if (nextTurnPlayerId === Array.from(room.players.keys())[0]) {
-        room.roundNumber += 1;
-      }
+      if (nextTurnPlayerId === room.startingPlayerId) room.roundNumber += 1;
 
-      if (advanceSequence) {
-        room.expectedNumber = getNextExpectedNumber(room.expectedNumber);
-      }
+      room.expectedNumber = getNextExpectedNumber(room.expectedNumber);
     }
   }
 
@@ -316,7 +350,85 @@ function finishPendingPlay(io, room) {
   emitPrivateGameState(io, room);
 }
 
-function createRoom(socket, roomCode) {
+export function playBluffExtraCard(room, playerId, cardId) {
+  if (
+    room.status !== "bluff-extra" ||
+    room.currentTurnPlayerId !== playerId ||
+    room.bluffExtraPlayerId !== playerId ||
+    room.bluffExtraRemaining <= 0
+  ) {
+    return { ok: false, error: "You cannot play extra BLUFF cards right now." };
+  }
+
+  const hand = room.hands.get(playerId) ?? [];
+  const cardIndex = hand.findIndex((card) => card.id === cardId);
+
+  if (cardIndex === -1) {
+    return { ok: false, error: "That card is not in your hand." };
+  }
+
+  const [playedCard] = hand.splice(cardIndex, 1);
+  room.discardPile.push({ announcedNumber: null, card: playedCard, playerId });
+  room.bluffExtraRemaining -= 1;
+
+  const didWin = checkWinner(room, playerId);
+
+  if (!didWin && room.bluffExtraRemaining <= 0) {
+    finishBluffExtra(room, playerId);
+  }
+
+  return { didWin, ok: true, playedCard };
+}
+
+export function finishBluffExtra(room, playerId) {
+  if (
+    room.status !== "bluff-extra" ||
+    room.currentTurnPlayerId !== playerId ||
+    room.bluffExtraPlayerId !== playerId
+  ) {
+    return { ok: false, error: "You cannot end BLUFF bonus cards right now." };
+  }
+
+  advanceTurn(room, playerId);
+  room.status = "playing";
+  room.bluffExtraPlayerId = null;
+  room.bluffExtraRemaining = 0;
+  room.expectedNumber = getNextExpectedNumber(room.expectedNumber);
+  return { ok: true };
+}
+
+export function drawTurnCard(room, playerId) {
+  if (room.status !== "playing" || room.currentTurnPlayerId !== playerId) {
+    return { ok: false, error: "You cannot draw right now." };
+  }
+
+  if (drawCards(room, playerId, 1) !== 1) {
+    return { ok: false, error: "The draw pile is empty." };
+  }
+
+  advanceTurn(room, playerId);
+  room.expectedNumber = getNextExpectedNumber(room.expectedNumber);
+  return { ok: true };
+}
+
+export function registerRavoCall(room, callerId, now = Date.now()) {
+  if (room.status !== "challenge" || !room.pendingPlay) {
+    return { ok: false, error: "There is no card to challenge right now." };
+  }
+  if (!room.challengeEndsAt || now > room.challengeEndsAt) {
+    return { ok: false, error: "The RAVO window has ended." };
+  }
+  if (room.pendingPlay.playerId === callerId) {
+    return { ok: false, error: "You cannot call RAVO on your own card." };
+  }
+  if (room.pendingRavoCallers.size > 0 || room.pendingRavoCallers.has(callerId)) {
+    return { ok: false, error: "This play has already been challenged." };
+  }
+  room.pendingRavoCallers.add(callerId);
+  return { ok: true };
+}
+
+export function createRoom(socket, roomCode) {
   return {
     challengeEndsAt: null,
     challengeTimer: null,
@@ -337,19 +449,22 @@ function createRoom(socket, roomCode) {
     lastRevealWasChallenged: false,
     log: [],
     pendingPlay: null,
+    pendingPenalty: null,
     pendingRavoCallers: new Set(),
     players: new Map(),
     mediaStatus: new Map(),
     roundNumber: 1,
     hands: new Map(),
     status: "waiting",
+    startingPlayerId: null,
     drawPile: [],
     discardPile: [],
     winnerId: null,
   };
 }
 
-app.prepare().then(() => {
+export async function startServer() {
+  await app.prepare();
   const httpServer = createServer(handle);
   const io = new Server(httpServer);
 
@@ -448,9 +563,17 @@ app.prepare().then(() => {
         return;
       }
 
+      if (room.status !== "waiting") {
+        callback({ ok: false, error: "The game has already started." });
+        return;
+      }
+
       resetGameRound(room);
 
-      addLog(room, "The game started. Each player received 8 cards.");
+      addLog(
+        room,
+        `The game started. Each player received 8 cards. ${room.players.get(room.startingPlayerId)?.name ?? "A randomly selected player"} starts with number 1.`,
+      );
       callback({ ok: true, room: getPublicRoom(room) });
       emitPrivateGameState(io, room);
     });
@@ -481,24 +604,14 @@ app.prepare().then(() => {
         return;
       }
 
-      const [playedCard] = hand.splice(cardIndex, 1);
-      console.log("played card:", playedCard);
-      room.hands.set(socket.id, hand);
-
       if (room.status === "bluff-extra") {
-        if (room.bluffExtraPlayerId !== socket.id || room.bluffExtraRemaining <= 0) {
-          callback({ ok: false, error: "You cannot play extra BLUFF cards right now." });
-          hand.splice(cardIndex, 0, playedCard);
-          room.hands.set(socket.id, hand);
+        const result = playBluffExtraCard(room, socket.id, cardId);
+
+        if (!result.ok) {
+          callback(result);
           return;
         }
 
-        room.discardPile.push({
-          announcedNumber: null,
-          card: playedCard,
-          playerId: socket.id,
-        });
-        room.bluffExtraRemaining -= 1;
         room.lastAnnouncement = "BLUFF SUCCESS - extra card played face-down.";
         addLog(room, `${socket.data.playerName} played an extra BLUFF success card.`);
         io.to(room.code).emit("game:bluff-extra-card-played", {
@@ -506,26 +619,18 @@ app.prepare().then(() => {
           remaining: room.bluffExtraRemaining,
         });
 
-        const didWin = checkWinner(room, socket.id);
-
-        if (!didWin && room.bluffExtraRemaining <= 0) {
-          const nextTurnPlayerId = getNextPlayerId(room, socket.id);
-          room.status = "playing";
-          room.bluffExtraPlayerId = null;
-          room.bluffExtraRemaining = 0;
-          room.currentTurnPlayerId = nextTurnPlayerId;
-          room.expectedNumber = getNextExpectedNumber(room.expectedNumber);
-          addLog(room, `${room.players.get(nextTurnPlayerId)?.name ?? "Next player"}'s turn started.`);
-
-          if (nextTurnPlayerId === Array.from(room.players.keys())[0]) {
-            room.roundNumber += 1;
-          }
+        if (!result.didWin && room.status === "playing") {
+          addLog(room, `${room.players.get(room.currentTurnPlayerId)?.name ?? "Next player"}'s turn started.`);
         }
 
         callback({ ok: true, room: getPublicRoom(room) });
         emitPrivateGameState(io, room);
         return;
       }
+
+      const [playedCard] = hand.splice(cardIndex, 1);
+      console.log("played card:", playedCard);
+      room.hands.set(socket.id, hand);
 
       room.discardPile.push({
         announcedNumber: room.expectedNumber,
@@ -589,10 +694,10 @@ app.prepare().then(() => {
         return;
       }
 
-      const drawnCount = drawCards(room, socket.id, 1);
+      const result = drawTurnCard(room, socket.id);
 
-      if (drawnCount === 0) {
-        callback({ ok: false, error: "The draw pile is empty." });
+      if (!result.ok) {
+        callback(result);
         return;
       }
 
@@ -601,12 +706,24 @@ app.prepare().then(() => {
       console.log("pendingPlayedCard", room.pendingPlay?.card ?? null);
       console.log("revealedCard", null);
       console.log("lastRevealedCard", room.lastRevealedCard);
-      room.currentTurnPlayerId = getNextPlayerId(room, socket.id);
-      if (room.currentTurnPlayerId === Array.from(room.players.keys())[0]) {
-        room.roundNumber += 1;
-      }
-      room.expectedNumber = getNextExpectedNumber(room.expectedNumber);
+      callback({ ok: true, room: getPublicRoom(room) });
+      emitPrivateGameState(io, room);
+    });
 
+    socket.on("game:finish-bluff-extra", (callback) => {
+      const room = rooms.get(socket.data.roomCode);
+      if (!room) {
+        callback({ ok: false, error: "Room not found. Create or join a room first." });
+        return;
+      }
+
+      const result = finishBluffExtra(room, socket.id);
+      if (!result.ok) {
+        callback(result);
+        return;
+      }
+
+      addLog(room, `${socket.data.playerName} ended the BLUFF bonus.`);
       callback({ ok: true, room: getPublicRoom(room) });
       emitPrivateGameState(io, room);
     });
@@ -619,17 +736,17 @@ app.prepare().then(() => {
         return;
       }
 
-      if (room.status !== "challenge" || !room.pendingPlay) {
-        callback({ ok: false, error: "There is no card to challenge right now." });
+      if (!room.challengeEndsAt || Date.now() > room.challengeEndsAt) {
+        finishPendingPlay(io, room);
+        callback({ ok: false, error: "The RAVO window has ended." });
         return;
       }
 
-      if (room.pendingPlay.playerId === socket.id) {
-        callback({ ok: false, error: "You cannot call RAVO on your own card." });
+      const result = registerRavoCall(room, socket.id);
+      if (!result.ok) {
+        callback(result);
         return;
       }
-
-      room.pendingRavoCallers.add(socket.id);
       addLog(room, `${socket.data.playerName} called RAVO.`);
       io.to(room.code).emit("game:ravo-called", {
         callerId: socket.id,
@@ -702,8 +819,19 @@ app.prepare().then(() => {
         return;
       }
 
+      if (room.status !== "finished") {
+        callback?.({ ok: false, error: "The current game is not finished." });
+        return;
+      }
+
+      if (room.hostId !== socket.id) {
+        callback?.({ ok: false, error: "Only the host can return the room to the lobby." });
+        return;
+      }
+
       room.status = "waiting";
       room.currentTurnPlayerId = null;
+      room.startingPlayerId = null;
       room.expectedNumber = 1;
       room.hands.clear();
       room.lastAnnouncement = null;
@@ -716,6 +844,7 @@ app.prepare().then(() => {
       room.lastRevealCallers = [];
       room.lastRevealWasChallenged = false;
       room.pendingPlay = null;
+      room.pendingPenalty = null;
       room.pendingRavoCallers.clear();
       room.bluffExtraPlayerId = null;
       room.bluffExtraRemaining = 0;
@@ -844,7 +973,11 @@ app.prepare().then(() => {
     });
   });
 
-  httpServer.listen(port, () => {
+  return httpServer.listen(port, () => {
     console.log(`RAVO Online is running at http://${hostname}:${port}`);
   });
-});
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void startServer();
+}

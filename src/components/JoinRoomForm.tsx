@@ -23,6 +23,7 @@ export function JoinRoomForm() {
   const [hand, setHand] = useState<Card[]>([]);
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -30,6 +31,7 @@ export function JoinRoomForm() {
 
     nextSocket.on("connect", () => {
       setCurrentPlayerId(nextSocket.id ?? "");
+      setSocket(nextSocket);
     });
 
     nextSocket.on("room:updated", (updatedRoom: Room) => {
@@ -160,6 +162,12 @@ export function JoinRoomForm() {
     });
   }
 
+  function handleEndBluffExtra() {
+    socketRef.current?.emit("game:finish-bluff-extra", (response: RoomResponse) => {
+      if (!response.ok) setError(response.error);
+    });
+  }
+
   function handleSendChat(message: string) {
     if (!socketRef.current) {
       setError("Still connecting to the server. Try again in a moment.");
@@ -198,6 +206,7 @@ export function JoinRoomForm() {
         onCameraStreamChange={setCameraStream}
         onCallRavo={handleCallRavo}
         onDrawCard={handleDrawCard}
+        onEndBluffExtra={handleEndBluffExtra}
         onMicStreamChange={setMicStream}
         onPlayCard={handlePlayCard}
         onPlayAgain={() => {
@@ -214,7 +223,7 @@ export function JoinRoomForm() {
         }}
         onSendChat={handleSendChat}
         room={room}
-        socket={socketRef.current}
+        socket={socket}
       />
     );
   }
@@ -232,7 +241,7 @@ export function JoinRoomForm() {
         onSendChat={handleSendLobbyChat}
         onStartGame={handleStartGame}
         room={room}
-        socket={socketRef.current}
+        socket={socket}
       />
     );
   }

@@ -44,11 +44,13 @@ export type Room = {
   lastRevealCallers: string[];
   log: string[];
   lastRevealWasChallenged: boolean;
-  pendingPlayedCard: Card | null;
+  pendingPlayedCard: boolean;
+  pendingPenalty: { count: number; playerId: string } | null;
   pendingRavoCallers: string[];
   players: Player[];
   roundNumber: number;
-  status: "waiting" | "playing" | "challenge" | "bluff-extra" | "finished";
+  startingPlayerId: string | null;
+  status: "waiting" | "playing" | "challenge" | "resolving" | "bluff-extra" | "draw-pile-empty" | "finished";
   winnerId: string | null;
 };
 
