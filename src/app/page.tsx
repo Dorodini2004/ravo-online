@@ -1,8 +1,12 @@
+"use client";
 import Link from "next/link";
 import { CardImage } from "@/components/CardImage";
 import { SocketStatus } from "@/components/SocketStatus";
+import { SettingsButton } from "@/components/SettingsDialog";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export default function Home() {
+  const { t } = useI18n();
   return (
     <main className="ravo-felt ravo-home-scene reference-home relative min-h-screen overflow-hidden px-6 py-8 text-white">
       <div className="ravo-home-background" aria-hidden="true">
@@ -35,7 +39,7 @@ export default function Home() {
       </div>
 
       <nav className="reference-nav relative z-20 mx-auto flex w-full max-w-[92rem] items-center justify-between">
-        <Link href="/" className="reference-brand" aria-label="RAVO Online home">
+        <Link href="/" className="reference-brand" aria-label={t("home")}>
           <span className="brand-mask">◉</span>
           <span>
             <strong>RAVO</strong>
@@ -46,21 +50,16 @@ export default function Home() {
         <div className="reference-nav-actions">
           <Link href="/how-to-play" className="reference-nav-pill">
             <span>?</span>
-            How to play
+            {t("howTo")}
           </Link>
-          <button type="button" className="reference-icon-button" aria-label="Settings">
-            ⚙
-          </button>
-          <button type="button" className="reference-icon-button" aria-label="Profile">
-            ♙
-          </button>
+          <SettingsButton />
         </div>
       </nav>
 
       <section className="reference-hero relative z-10 mx-auto grid min-h-[calc(100vh-7rem)] w-full max-w-[92rem] items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="reference-copy relative">
           <div className="ravo-title-aura" aria-hidden="true" />
-          <p className="reference-eyebrow">Multiplayer Bluff Card Game</p>
+          <p className="reference-eyebrow">{t("tagline")}</p>
 
           <h1 className="reference-title">
             RAVO
@@ -68,9 +67,7 @@ export default function Home() {
           </h1>
 
           <p className="reference-description">
-            Hide the truth, call the bluff, and survive the table. RAVO brings
-            your physical card game online with a clean dark table built for
-            friends.
+            {t("description")}
           </p>
 
           <div className="mt-7 max-w-md">
@@ -83,7 +80,7 @@ export default function Home() {
               className="premium-button premium-primary premium-particles home-primary-action reference-primary-action"
             >
               <span className="button-icon">♟</span>
-              Create Game
+              {t("createGame")}
             </Link>
 
             <Link
@@ -91,7 +88,7 @@ export default function Home() {
               className="premium-button premium-secondary home-secondary-action reference-secondary-action"
             >
               <span className="button-icon">↪</span>
-              Join Game
+              {t("joinGame")}
             </Link>
           </div>
         </div>
@@ -115,8 +112,8 @@ export default function Home() {
 
           <div className="reference-ready-card">
             <div>
-              <p>Live Prototype</p>
-              <strong>Ready to play</strong>
+              <p>{t("livePrototype")}</p>
+              <strong>{t("ready")}</strong>
             </div>
             <span>◉</span>
           </div>

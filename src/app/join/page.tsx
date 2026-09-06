@@ -1,7 +1,11 @@
+"use client";
 import Link from "next/link";
 import { JoinRoomForm } from "@/components/JoinRoomForm";
+import { SettingsButton } from "@/components/SettingsDialog";
+import { useI18n } from "@/i18n/I18nProvider";
 
 export default function JoinGamePage() {
+  const { t } = useI18n();
   return (
     <main className="ravo-felt relative min-h-screen overflow-hidden px-6 py-8 text-white">
       <div className="ravo-atmosphere compact" aria-hidden="true">
@@ -20,12 +24,12 @@ export default function JoinGamePage() {
       </div>
 
       <section className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-4xl flex-col justify-center">
-        <Link
+        <div className="mb-8 flex items-center justify-between"><Link
           href="/"
           className="mb-8 w-fit rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-black text-zinc-300 shadow-[0_18px_60px_rgba(0,0,0,0.35)] backdrop-blur transition hover:-translate-y-0.5 hover:bg-white hover:text-black"
         >
-          Back to home
-        </Link>
+          {t("backHome")}
+        </Link><SettingsButton /></div>
 
         <JoinRoomForm />
       </section>

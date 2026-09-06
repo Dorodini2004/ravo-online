@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type LocalCameraProps = {
   cameraError?: string;
@@ -19,6 +20,7 @@ export function LocalCamera({
   isCameraOn,
   isMicOn,
 }: LocalCameraProps) {
+  const { t } = useI18n();
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -41,7 +43,7 @@ export function LocalCamera({
         ) : (
           <div className="local-camera-placeholder">
             <div className="local-camera-mask">MASK</div>
-            {!compact ? <p>Camera Off</p> : null}
+            {!compact ? <p>{t("camera")} {t("off")}</p> : null}
           </div>
         )}
 

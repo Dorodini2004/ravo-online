@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import type { Card } from "@/types/room";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type CardImageProps = {
   card?: Card;
@@ -42,6 +43,7 @@ export function getCardAlt(card?: Card, faceDown = false) {
 }
 
 export function CardImage({ card, className = "", faceDown = false }: CardImageProps) {
+  const { language } = useI18n();
   const imagePath = getCardImageSrc(card, faceDown);
   const shouldLogRevealPath =
     className.includes("ravo-center-revealed-card") ||
@@ -55,7 +57,7 @@ export function CardImage({ card, className = "", faceDown = false }: CardImageP
   return (
     <Image
       src={imagePath}
-      alt={getCardAlt(card, faceDown)}
+      alt={language === "de" ? (faceDown || !card ? "Verdeckte RAVO-Karte" : card.type === "number" ? `RAVO-Zahlenkarte ${card.value}` : card.type === "ravo-joker" ? "RAVO-Joker" : "BLUFF-Karte") : getCardAlt(card, faceDown)}
       draggable={false}
       width={512}
       height={768}

@@ -5,6 +5,7 @@ import type { Socket } from "socket.io-client";
 import { CardImage } from "@/components/CardImage";
 import { LocalCamera } from "@/components/LocalCamera";
 import type { Card, ChatMessage, Player, Room } from "@/types/room";
+import { useI18n, useLocalizedError } from "@/i18n/I18nProvider";
 
 const DESIGN_WIDTH = 1600;
 const DESIGN_HEIGHT = 900;
@@ -152,6 +153,8 @@ export function GamePanel({
   room,
   socket,
 }: GamePanelProps) {
+  const { t } = useI18n();
+  const localizedError = useLocalizedError(error);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -824,7 +827,7 @@ export function GamePanel({
               </h1>
 
               <div className="ravo-side-card">
-                <p>Room Code</p>
+                <p>{t("roomCode")}</p>
                 <strong>{room.code}</strong>
                 <button
                   type="button"
@@ -838,12 +841,12 @@ export function GamePanel({
               </div>
 
               <div className="ravo-side-card compact">
-                <p>Round</p>
+                <p>{t("round")}</p>
                 <strong>{room.roundNumber}</strong>
               </div>
 
               <button type="button" className="ravo-back-home" onClick={handleBackHome}>
-                Back to home
+                {t("backHome")}
               </button>
             </div>
 
@@ -856,7 +859,7 @@ export function GamePanel({
               <div className="ravo-table-mask">RAVO</div>
 
               <div className="ravo-number-panel">
-                <p>Next Number</p>
+                <p>{t("nextNumber")}</p>
                 <strong>{room.expectedNumber}</strong>
               </div>
 
@@ -866,7 +869,7 @@ export function GamePanel({
                   disabled={!canDrawCard || isDrawLoading}
                   onClick={handleDrawCardClick}
                   className="ravo-pile ravo-draw-pile"
-                  aria-label="Draw card"
+                  aria-label={t("drawCard")}
                 >
                   <PileStack />
                   <CardImage faceDown className="ravo-table-card ravo-card-draw" />
@@ -876,8 +879,8 @@ export function GamePanel({
                   {room.pendingPlayedCard ? (
                     <>
                       <CardImage faceDown className="ravo-center-revealed-card pending" />
-                      <strong>FACE DOWN</strong>
-                      <span>RAVO window open</span>
+                      <strong>{t("faceDown")}</strong>
+                      <span>{t("ravoWindow")}</span>
                     </>
                   ) : room.lastRevealedCard ? (
                     <>
@@ -895,8 +898,8 @@ export function GamePanel({
                   ) : (
                     <>
                       <div className="ravo-center-empty-card">RAVO</div>
-                      <strong>WAITING</strong>
-                      <span>No card played</span>
+                      <strong>{t("waiting")}</strong>
+                      <span>{t("noCard")}</span>
                     </>
                   )}
                 </div>
@@ -927,15 +930,15 @@ export function GamePanel({
           ))}
 
           <aside className="ravo-last-played">
-            <p>Last Played By</p>
-            <strong>{lastPlayedBy?.name ?? "None"}</strong>
-            <p>Claimed</p>
+            <p>{t("lastPlayedBy")}</p>
+            <strong>{lastPlayedBy?.name ?? t("none")}</strong>
+            <p>{t("claimed")}</p>
             <strong>{room.lastClaimedNumber ?? "-"}</strong>
-            <p>Revealed</p>
+            <p>{t("revealed")}</p>
             <strong>{lastPlayedRevealedLabel ?? "-"}</strong>
-            <p>Status</p>
+            <p>{t("status")}</p>
             <em>{room.lastRevealedCard ? (room.lastRevealWasChallenged ? "RAVO Called" : "Not Challenged") : "Waiting"}</em>
-            {error ? <small>{error}</small> : null}
+            {localizedError ? <small>{localizedError}</small> : null}
           </aside>
 
           <aside className="ravo-my-camera">
@@ -982,14 +985,14 @@ export function GamePanel({
               {room.status === "bluff-extra" && room.bluffExtraPlayerId === currentPlayerId ? (
                 <>
                   <em className="ravo-bluff-extra-note">
-                    BLUFF SUCCESS - play up to {room.bluffExtraRemaining} extra cards
+                  BLUFF — {room.bluffExtraRemaining} {t("cards")}
                   </em>
-                  <button type="button" onClick={onEndBluffExtra}>End bonus</button>
+                  <button type="button" onClick={onEndBluffExtra}>{t("endBonus")}</button>
                 </>
               ) : null}
               {selectedCard ? (
                 <button type="button" disabled={!canPlayCard} onClick={handlePlaySelected}>
-                  Play {getCardLabel(selectedCard)}
+                  {t("play")} {getCardLabel(selectedCard)}
                 </button>
               ) : null}
             </div>
@@ -997,13 +1000,13 @@ export function GamePanel({
 
           <aside className="ravo-right-sidebar">
             <div className="ravo-top-icons" aria-label="Quick controls">
-              <button type="button" aria-label="Sound" onClick={handleToggleSound} className={isSoundOn ? "active" : ""}>
+              <button type="button" aria-label={t("sound")} title={t("sound")} onClick={handleToggleSound} className={isSoundOn ? "active" : ""}>
                 {isSoundOn ? "SND" : "MUTE"}
               </button>
-              <button type="button" aria-label="Chat" onClick={() => setIsChatOpen((current) => !current)}>
+              <button type="button" aria-label={t("chat")} title={t("chat")} onClick={() => setIsChatOpen((current) => !current)}>
                 CHAT
               </button>
-              <button type="button" aria-label="Settings" onClick={() => setIsSettingsOpen(true)}>
+              <button type="button" aria-label={t("settings")} title={t("settings")} onClick={() => setIsSettingsOpen(true)}>
                 SET
               </button>
             </div>
@@ -1016,7 +1019,7 @@ export function GamePanel({
                 className={`ravo-action primary premium-particles ${canCallRavo ? "active" : ""}`}
               >
                 <span>RAVO!</span>
-                <small>{didYouCallRavo || isRavoLoading ? "Called" : "Challenge"}</small>
+                <small>{didYouCallRavo || isRavoLoading ? t("called") : t("challenge")}</small>
               </button>
               <button
                 type="button"
@@ -1024,20 +1027,20 @@ export function GamePanel({
                 onClick={handleDrawCardClick}
                 className="ravo-action"
               >
-                <span>Draw Card</span>
-                <small>{isDrawLoading ? "Drawing..." : "Skip your turn"}</small>
+                <span>{t("drawCard")}</span>
+                <small>{isDrawLoading ? t("drawing") : t("skipTurn")}</small>
               </button>
               <button type="button" className={`ravo-action status-action ${isCameraOn ? "status-on" : "status-off"}`} onClick={handleToggleCamera}>
-                <span>Camera: {isCameraOn ? "On" : "Off"}</span>
-                <small>{isCameraOn ? "Click to stop" : "Request camera"}</small>
+                <span>{t("camera")}: {t(isCameraOn ? "on" : "off")}</span>
+                <small>{isCameraOn ? t("clickStop") : t("requestCamera")}</small>
               </button>
               <button type="button" className={`ravo-action status-action ${isMicOn ? "status-on" : "status-off"}`} onClick={handleToggleMic}>
-                <span>Mic: {isMicOn ? "On" : "Off"}</span>
-                <small>{isMicOn ? "Click to stop" : "Request mic"}</small>
+                <span>{t("microphone")}: {t(isMicOn ? "on" : "off")}</span>
+                <small>{isMicOn ? t("clickStop") : t("requestMic")}</small>
               </button>
               <button type="button" className="ravo-action" onClick={() => setIsSettingsOpen(true)}>
-                <span>Settings</span>
-                <small>Display and scale</small>
+                <span>{t("settings")}</span>
+                <small>{t("settingsSubtitle")}</small>
               </button>
             </div>
           </aside>
@@ -1050,8 +1053,8 @@ export function GamePanel({
 
           {room.status === "challenge" ? (
             <div className="ravo-countdown-panel">
-              <strong>RAVO time: {countdownSeconds}</strong>
-              <span>Challenge the face-down card now</span>
+              <strong>{t("ravoTime")}: {countdownSeconds}</strong>
+              <span>{t("challengeNow")}</span>
             </div>
           ) : null}
 
@@ -1072,9 +1075,9 @@ export function GamePanel({
           {isChatOpen ? (
             <section className="ravo-chat-panel">
               <div className="ravo-chat-header">
-                <strong>Chat</strong>
+                <strong>{t("lobbyChat")}</strong>
                 <button type="button" onClick={() => setIsChatOpen(false)}>
-                  Close
+                  {t("close")}
                 </button>
               </div>
               <ul>
@@ -1094,10 +1097,10 @@ export function GamePanel({
                       handleSendChat();
                     }
                   }}
-                  placeholder="Type message..."
+                  placeholder={t("typeMessage")}
                 />
                 <button type="button" onClick={handleSendChat}>
-                  Send
+                  {t("send")}
                 </button>
               </div>
             </section>
@@ -1112,10 +1115,10 @@ export function GamePanel({
           {room.status === "finished" ? (
             <div className="ravo-win">
               <div>
-                <p>Game Over</p>
-                <h2>{winner?.name ?? "A player"} wins</h2>
+                <p>{t("gameOver")}</p>
+                <h2>{winner?.name ?? t("player")} {t("wins")}</h2>
                 <button type="button" onClick={onPlayAgain}>
-                  Play Again
+                  {t("playAgain")}
                 </button>
               </div>
             </div>
@@ -1124,8 +1127,8 @@ export function GamePanel({
           {room.status === "draw-pile-empty" ? (
             <div className="ravo-win">
               <div>
-                <p>Game Paused</p>
-                <h2>Not enough cards for the pending penalty</h2>
+                <p>{t("gamePaused")}</p>
+                <h2>{t("penaltyShortage")}</h2>
                 <small>
                   {room.pendingPenalty?.count ?? 2} cards are owed, but too few cards remain even after reshuffling.
                 </small>
@@ -1161,16 +1164,34 @@ function DisplaySettingsPanel({
   stageScale: number;
   userScale: number;
 }) {
+  const { language, setLanguage, t } = useI18n();
+  const panelRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+      if (event.key === "Tab" && panelRef.current) {
+        const items = [...panelRef.current.querySelectorAll<HTMLElement>("button")];
+        const first = items[0], last = items.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => { document.removeEventListener("keydown", handleKey); previous?.focus(); };
+  }, [onClose]);
   return (
-    <div className="display-settings-backdrop">
-      <section className="display-settings-panel" aria-label="Display settings">
+    <div className="display-settings-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section ref={panelRef} role="dialog" aria-modal="true" className="display-settings-panel" aria-label={t("settings")}>
         <div className="display-settings-header">
           <div>
-            <p>Display Settings</p>
-            <h2>Canvas Fit</h2>
+            <p>{t("settings")}</p>
+            <h2>{t("display")}</h2>
           </div>
-          <button type="button" onClick={onClose}>
-            Close
+          <button ref={closeRef} type="button" onClick={onClose}>
+            {t("close")}
           </button>
         </div>
 
@@ -1181,7 +1202,7 @@ function DisplaySettingsPanel({
         </div>
 
         <div className="display-settings-section">
-          <p>UI Scale</p>
+          <p>{t("uiScale")}</p>
           <div className="display-settings-options">
             {SCALE_OPTIONS.map((scale) => (
               <button
@@ -1196,6 +1217,8 @@ function DisplaySettingsPanel({
           </div>
         </div>
 
+        <div className="display-settings-section"><p>{t("language")}</p><div className="display-settings-options"><button type="button" className={language === "de" ? "active" : ""} onClick={() => setLanguage("de")}>{t("german")}</button><button type="button" className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>{t("english")}</button></div></div>
+
         <div className="display-settings-hints">
           <p>Hotkeys</p>
           <span>Minus: scale down</span>
@@ -1204,7 +1227,7 @@ function DisplaySettingsPanel({
         </div>
 
         <button type="button" className="display-settings-reset" onClick={onReset}>
-          Reset Display Defaults
+          {t("reset")}
         </button>
       </section>
     </div>

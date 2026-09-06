@@ -12,8 +12,10 @@ import type {
   Room,
   RoomResponse,
 } from "@/types/room";
+import { useI18n, useLocalizedError } from "@/i18n/I18nProvider";
 
 export function CreateRoomForm() {
+  const { t } = useI18n();
   const [playerName, setPlayerName] = useState("");
   const [error, setError] = useState("");
   const [currentPlayerId, setCurrentPlayerId] = useState("");
@@ -24,6 +26,14 @@ export function CreateRoomForm() {
   const [room, setRoom] = useState<Room | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const localizedError = useLocalizedError(error);
+
+  function handleLeaveRoom() {
+    cameraStream?.getTracks().forEach((track) => track.stop());
+    micStream?.getTracks().forEach((track) => track.stop());
+    socketRef.current?.disconnect();
+    window.location.assign("/");
+  }
 
   useEffect(() => {
     const nextSocket = io();
@@ -238,6 +248,7 @@ export function CreateRoomForm() {
         onMicStreamChange={setMicStream}
         onSendChat={handleSendLobbyChat}
         onStartGame={handleStartGame}
+        onLeaveRoom={handleLeaveRoom}
         room={room}
         socket={socket}
       />
@@ -253,33 +264,33 @@ export function CreateRoomForm() {
 
       <div className="relative">
         <p className="w-fit rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-black uppercase tracking-[0.3em] text-[#d4af37]">
-          Host a Match
+          {t("hostMatch")}
         </p>
 
-        <h1 className="mt-4 text-5xl font-black text-white">Create Game</h1>
+        <h1 className="mt-4 text-5xl font-black text-white">{t("createGame")}</h1>
 
         <p className="mt-4 max-w-xl text-base font-semibold leading-7 text-zinc-400">
-          Enter your name to create a private room code for your friends.
+          {t("createDescription")}
         </p>
 
         <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
           <label className="block">
             <span className="text-sm font-black uppercase tracking-[0.14em] text-zinc-300">
-              Your name
+              {t("yourName")}
             </span>
             <input
               type="text"
               name="playerName"
               value={playerName}
               onChange={(event) => setPlayerName(event.target.value)}
-              placeholder="Example: Patrik"
+              placeholder={t("exampleName")}
               className="mt-3 h-15 w-full rounded-2xl border border-white/10 bg-black/55 px-5 text-base font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] outline-none transition placeholder:text-zinc-600 hover:border-white/20 focus:border-white/60 focus:bg-black/75"
             />
           </label>
 
-          {error ? (
+          {localizedError ? (
             <p className="rounded-xl border border-red-400/40 bg-red-950/60 px-4 py-3 text-sm font-bold text-red-100">
-              {error}
+              {localizedError}
             </p>
           ) : null}
 
@@ -287,7 +298,7 @@ export function CreateRoomForm() {
             type="submit"
             className="premium-button premium-primary premium-particles h-15 w-full rounded-2xl bg-white px-8 text-base font-black uppercase tracking-[0.08em] text-black shadow-[0_22px_70px_rgba(255,255,255,0.14)] transition duration-200"
           >
-            Create Room
+            {t("createRoom")}
           </button>
         </form>
       </div>

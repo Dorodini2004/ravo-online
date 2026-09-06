@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
+import { useI18n } from "@/i18n/I18nProvider";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
 export function SocketStatus() {
+  const { t } = useI18n();
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("connecting");
   const [socketId, setSocketId] = useState("");
@@ -48,9 +50,9 @@ export function SocketStatus() {
           }`}
         />
         <p className="text-sm font-black text-white">
-          Server{" "}
+          {t("server")}{" "}
           <span className={isConnected ? "text-emerald-300" : "text-red-300"}>
-            {connectionState}
+            {t(connectionState)}
           </span>
         </p>
       </div>
