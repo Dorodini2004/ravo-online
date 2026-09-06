@@ -2,6 +2,7 @@ export type Language = "de" | "en";
 
 export const translations = {
   en: {
+    viewSize: "View size", auto: "Automatic", compact: "Compact", large: "Large", turn: "Turn", selectCard: "Select a card, then press Play.",
     settings: "Settings", close: "Close", language: "Language", english: "English", german: "German",
     home: "RAVO Online home", howTo: "How to play", tagline: "Multiplayer Bluff Card Game",
     description: "Hide the truth, call the bluff, and survive the table. RAVO brings your physical card game online for friends.",
@@ -24,6 +25,7 @@ export const translations = {
     learnBluff: "Learn the bluff", rulesIntro: "Hidden cards, bold bluffs, and the right RAVO call at the right moment.",
   },
   de: {
+    viewSize: "Ansichtsgröße", auto: "Automatisch", compact: "Kompakt", large: "Groß", turn: "Am Zug", selectCard: "Karte auswählen, dann Spielen drücken.",
     settings: "Einstellungen", close: "Schließen", language: "Sprache", english: "Englisch", german: "Deutsch",
     home: "RAVO Online Startseite", howTo: "Spielanleitung", tagline: "Mehrspieler-Bluffkartenspiel",
     description: "Verbirg die Wahrheit, entlarve Bluffs und behaupte dich am Tisch. RAVO bringt dein Kartenspiel online zu Freunden.",

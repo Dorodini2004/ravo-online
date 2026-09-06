@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/i18n/I18nProvider";
+import { ViewSizePicker } from "./ViewSize";
 
 export function SettingsButton({ className = "reference-icon-button" }: { className?: string }) {
   const [open, setOpen] = useState(false);
@@ -35,6 +36,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="settings-title" className="w-full max-w-md rounded-3xl border border-[#d4af37]/30 bg-zinc-950 p-6 text-white shadow-2xl">
       <div className="flex items-center justify-between"><h2 id="settings-title" className="text-2xl font-black">{t("settings")}</h2><button ref={closeRef} type="button" onClick={onClose} className="rounded-xl border border-white/15 px-3 py-2" aria-label={t("close")} title={t("close")}>×</button></div>
       <fieldset className="mt-6"><legend className="text-sm font-black uppercase tracking-widest text-[#d4af37]">{t("language")}</legend><div className="mt-3 grid grid-cols-2 gap-3">{(["de","en"] as const).map((code) => <button key={code} type="button" aria-pressed={language === code} onClick={() => setLanguage(code)} className={`rounded-xl border p-3 font-bold ${language === code ? "border-[#d4af37] bg-[#d4af37]/15" : "border-white/10 bg-white/5"}`}>{t(code === "de" ? "german" : "english")}</button>)}</div></fieldset>
+      <ViewSizePicker />
       <p className="mt-4 text-sm text-zinc-400">{t("saveLanguage")}</p>
     </div>
   </div>;

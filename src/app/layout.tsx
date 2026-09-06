@@ -1,4 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { ViewSizeSync } from "@/components/ViewSize";
+export const viewport: Viewport = { width: "device-width", initialScale: 1, userScalable: true, viewportFit: "cover", interactiveWidget: "resizes-content" };
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { I18nProvider } from "@/i18n/I18nProvider";
@@ -30,7 +32,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <I18nProvider>{children}</I18nProvider>
+        <I18nProvider><ViewSizeSync />{children}</I18nProvider>
       </body>
     </html>
   );

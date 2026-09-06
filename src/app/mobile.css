@@ -1,0 +1,38 @@
+:root { --view-card-width: clamp(78px, 23vw, 104px); --view-gap: 12px; --view-font: 16px; }
+:root[data-view-size="compact"] { --view-card-width: 76px; --view-gap: 8px; --view-font: 14px; --hand-card-w: 90px; --hand-card-h: 135px; }
+:root[data-view-size="large"] { --view-card-width: 120px; --view-gap: 16px; --view-font: 18px; --hand-card-w: 116px; --hand-card-h: 174px; }
+.mobile-game { display: none; }
+.view-size-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.view-size-picker legend { margin-bottom: 10px; color: #d4af37; font-weight: bold; }
+.view-size-picker button { min-height: 44px; padding: 8px 12px; border: 1px solid #555; border-radius: 10px; }
+.view-size-picker button[aria-pressed="true"] { border-color: #d4af37; background: #d4af3726; }
+[role="dialog"] { max-height: calc(100dvh - 32px); overflow-y: auto; }
+@media (max-width: 1100px) {
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  .game-shell { display: none !important; }
+  .ravo-felt:has(.mobile-game) { padding: 8px; }
+  .mobile-game { display: grid; gap: var(--view-gap); width: 100%; min-width: 0; min-height: 100dvh; padding: var(--view-gap); font-size: var(--view-font); background: #080a09; border: 1px solid #d4af3740; border-radius: 18px; }
+  .mobile-game > * { min-width: 0; }
+  .mobile-game header, .mobile-status { display: flex; align-items: center; justify-content: space-between; gap: var(--view-gap); flex-wrap: wrap; overflow-wrap: anywhere; }
+  .mobile-status { color: #f7d86d; padding-block: var(--view-gap); }
+  .mobile-status strong { font-size: 1.3em; }
+  .mobile-reveal { display: flex; align-items: center; gap: var(--view-gap); overflow-wrap: anywhere; }
+  .mobile-reveal > img { width: var(--view-card-width); height: auto; flex-shrink: 0; }
+  .mobile-game button, .mobile-game summary { min-height: 44px; min-width: 44px; padding: 10px; border: 1px solid #d4af3760; border-radius: 10px; }
+  .mobile-game button:disabled { opacity: .4; }
+  .mobile-actions { display: flex; gap: var(--view-gap); flex-wrap: wrap; }
+  .mobile-actions button { flex: 1; background: #d4af3726; font-weight: bold; }
+  .mobile-hand-scroll { display: flex; gap: var(--view-gap); overflow-x: auto; padding: 12px 4px; touch-action: auto; scrollbar-width: thin; }
+  .mobile-hand-scroll button { flex: 0 0 var(--view-card-width); width: var(--view-card-width); padding: 0; border: 3px solid transparent; background: none; }
+  .mobile-hand-scroll button[aria-pressed="true"] { border-color: #f7d86d; }
+  .mobile-hand-scroll img { display: block; width: 100%; height: auto; pointer-events: none; user-select: none; }
+  .mobile-opponents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--view-gap); }
+  .mobile-opponents > div { display: grid; padding: var(--view-gap); background: #ffffff0a; border-radius: 10px; overflow-wrap: anywhere; }
+  .mobile-game details { border-top: 1px solid #ffffff20; padding-top: var(--view-gap); }
+  .mobile-messages { max-height: 30dvh; overflow-y: auto; overflow-wrap: anywhere; }
+  .mobile-game form { display: flex; gap: 8px; margin-top: 12px; }
+  .mobile-game input { min-width: 0; width: 100%; border: 1px solid #666; padding: 10px; border-radius: 10px; }
+  .mobile-game .local-camera { width: min(100%, 320px); margin-block: 12px; }
+  input, textarea, select { font-size: 16px !important; }
+  button, summary, .reference-icon-button { min-height: 44px; min-width: 44px; }
+}

@@ -7,7 +7,7 @@ import { useI18n } from "@/i18n/I18nProvider";
 export default function JoinGamePage() {
   const { t } = useI18n();
   return (
-    <main className="ravo-felt relative min-h-screen overflow-hidden px-6 py-8 text-white">
+    <main className="ravo-felt relative min-h-screen overflow-x-clip px-6 py-8 text-white">
       <div className="ravo-atmosphere compact" aria-hidden="true">
         <span className="mask mark-one">◉</span>
         <span className="mask mark-two">?</span>

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { Socket } from "socket.io-client";
 import { CardImage } from "@/components/CardImage";
 import { LocalCamera } from "@/components/LocalCamera";
+import { MobileGame } from "./MobileGame";
+import { ViewSizePicker } from "./ViewSize";
 import type { Card, ChatMessage, Player, Room } from "@/types/room";
 import { useI18n, useLocalizedError } from "@/i18n/I18nProvider";
 
@@ -635,7 +637,7 @@ export function GamePanel({
         target?.tagName === "TEXTAREA" ||
         target?.isContentEditable;
 
-      if (isTyping) {
+      if (isTyping || event.ctrlKey || event.metaKey) {
         return;
       }
 
@@ -814,7 +816,7 @@ export function GamePanel({
   }
 
   return (
-    <main className="game-shell">
+    <><MobileGame room={room} hand={hand} playerId={currentPlayerId} messages={chatMessages} error={localizedError} canPlay={canPlayCard && !isPlayLoading} canDraw={canDrawCard && !isDrawLoading} canCall={canCallRavo && !isRavoLoading} countdown={countdownSeconds} onPlay={onPlayCard} onDraw={handleDrawCardClick} onCall={handleRavoClick} onBonus={onEndBluffExtra} onAgain={onPlayAgain} onChat={onSendChat} camera={cameraStream} mic={micStream} onCamera={handleToggleCamera} onMic={handleToggleMic}/><main className="game-shell">
       <div
         className="game-scale-wrapper"
         style={{ "--stage-scale": stageScale } as CSSProperties}
@@ -1147,7 +1149,7 @@ export function GamePanel({
           ) : null}
         </div>
       </div>
-    </main>
+    </main></>
   );
 }
 
@@ -1195,6 +1197,7 @@ function DisplaySettingsPanel({
           </button>
         </div>
 
+        <ViewSizePicker />
         <div className="display-settings-readout">
           <span>Design: 1600 x 900</span>
           <span>Stage fit: {Math.round(stageScale * 100)}%</span>
