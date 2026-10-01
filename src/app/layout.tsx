@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RAVO Online",
-  description: "A multiplayer online version of the RAVO card game.",
+  title: "Trading Basics Academy",
+  description: "Tradinggrundlagen lernen: 14 Tage, praktische Übungen und lokale Lernprofile.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="de"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >

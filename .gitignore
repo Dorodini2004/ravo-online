@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Unrelated workspace projects, archives and private learning backups
+/business-motivation-app/
+/ravo-online-project.zip
+/trading-basics-*.json
+/academy-rohdaten.json
+/private-backups/
